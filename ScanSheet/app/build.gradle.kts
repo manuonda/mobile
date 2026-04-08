@@ -69,16 +69,16 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
 
     // Navigation 3
-    implementation("androidx.navigation3:navigation3-runtime:1.0.0")
-    implementation("androidx.navigation3:navigation3-ui:1.0.0")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-navigation3:1.0.0-alpha02")
+    implementation(libs.androidx.navigation3.runtime)
+    implementation(libs.androidx.navigation3.ui)
+    implementation(libs.androidx.lifecycle.viewmodel.navigation3)
 
     // CameraX
-    implementation("androidx.camera:camera-core:1.5.1")
-    implementation("androidx.camera:camera-camera2:1.5.1")
-    implementation("androidx.camera:camera-lifecycle:1.5.1")
-    implementation("androidx.camera:camera-view:1.5.1")
-    implementation("androidx.camera:camera-compose:1.5.1")
+    implementation(libs.androidx.camera.core)
+    implementation(libs.androidx.camera.camera2)
+    implementation(libs.androidx.camera.lifecycle)
+    implementation(libs.androidx.camera.view)
+    implementation(libs.androidx.camera.compose)
 
     // ML Kit OCR (bundled — funciona sin internet)
     implementation("com.google.mlkit:text-recognition:16.0.1")
