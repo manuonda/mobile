@@ -14,23 +14,23 @@ import androidx.compose.ui.tooling.preview.Preview
 import com.nirv.scansheet.ui.home.HomeScreen
 import com.nirv.scansheet.ui.theme.ScanSheetTheme
 
-class MainActivity : ComponentActivity() {
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
-        setContent {
-            ScanSheetTheme {
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    HomeScreen(
-                        onScanNew = {/* Todo */},
-                        onFromGallery = {/*TODO*/},
-                        onSettings = {/*TODO*/},
-                    )
-                }
-            }
-        }
-    }
-}
+//class MainActivity : ComponentActivity() {
+//    override fun onCreate(savedInstanceState: Bundle?) {
+//        super.onCreate(savedInstanceState)
+//        enableEdgeToEdge()
+//        setContent {
+//            ScanSheetTheme {
+//                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+//                    HomeScreen(
+//                        onScanNew = {/* Todo */},
+//                        onFromGallery = {/*TODO*/},
+//                        onSettings = {/*TODO*/},
+//                    )
+//                }
+//            }
+//        }
+//    }
+//}
 
 @Composable
 fun Greeting(name: String, modifier: Modifier = Modifier) {

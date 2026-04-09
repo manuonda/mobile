@@ -24,8 +24,8 @@ fun BasicNavigationWrapper(){
                 is Home -> NavEntry(key = Home) {
                     HomeScreen()
                 }
-                is Detail -> NavEntry(key = Detail(key.id)) {
-                    DetailScreen($key)
+                is Detail -> NavEntry(key = Detail(id = key.id)) {
+                    DetailScreen(id = key.id)
                 }
 
                 else -> NavEntry(key = Unit) {
