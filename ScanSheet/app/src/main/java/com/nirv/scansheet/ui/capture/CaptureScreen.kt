@@ -1,46 +1,38 @@
 package com.nirv.scansheet.ui.capture
 
-import androidx.compose.material3.Scaffold
-import androidx.compose.runtime.Composable
-
-
-@Composable
-fun CaptureScreen() {
-    Scaffold(
-        topBar = {
-            TopAppBar(
-        }
-    ) {
-
-    }
-}
-
-
----
-El CaptureScreen.kt (placeholder por ahora)
-
-// ui/capture/CaptureScreen.kt
-package com.nirv.scansheet.ui.capture
-
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CaptureScreen(
-    onBack: () -> Unit,
-    onTextRecognized: () -> Unit   // cuando el OCR termina → va a Preview
+    onBack :() -> Unit,
+    onTextRecognized : ()-> Unit // Cuando el OCR termina va a preview
 ) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Escanear Documento") },
+                title = { Text("Escanea el Documento") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver")
@@ -55,49 +47,21 @@ fun CaptureScreen(
                 .padding(padding),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
-        ) {
-            Text("Cámara — placeholder", style = MaterialTheme.typography.headlineSmall)
+          ){
+            Text(text = "Camara PreView", style = MaterialTheme.typography.headlineSmall)
             Spacer(Modifier.height(24.dp))
-            // Botón temporal para simular OCR completo y poder navegar
             Button(onClick = onTextRecognized) {
-                Text("Simular escaneo → Preview")
+                Text("Simula Scaneo Preview")
             }
         }
+
+
     }
 }
 
----
-Y el MainActivity.kt — conectar todo
 
-package com.nirv.scansheet
-
-import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
-import com.nirv.scansheet.navigation.AppNavHost
-import com.nirv.scansheet.ui.theme.ScanSheetTheme
-
-class MainActivity : ComponentActivity() {
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
-        setContent {
-            ScanSheetTheme {
-                AppNavHost()
-            }
-        }
-    }
+@Preview
+@Composable
+fun CaptureScreenPreview(){
+    CaptureScreen(onBack = {}, onTextRecognized = {})
 }
-
----
-Resumen del flujo
-
-MainActivity
-└── AppNavHost  (backStack = [Home])
-├── Home     → botón "Escanear Nuevo" → backStack.add(Capture)
-├── Capture  → botón "Simular" → backStack.add(Preview)
-├── Preview  → (TODO fase 2)
-└── Export   → (TODO fase 2)
-
-¿Querés que te cree los archivos o preferís hacerlo vos con este código?
