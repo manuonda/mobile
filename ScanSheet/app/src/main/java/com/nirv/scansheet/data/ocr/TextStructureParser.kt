@@ -3,57 +3,38 @@ package com.nirv.scansheet.data.ocr
 import com.nirv.scansheet.domain.model.ExcelRow
 
 /**
- * Convierte líneas crudas de OCR en filas estructuradas (ExcelRow).
- * Soporta N columnas — no hay límite de columnas por fila.
+ * Convierte líneas crudas de OCR en filas de 2 columnas: [descripción, valor].
  *
- * Separadores reconocidos entre columnas:
- *   - Punto medio · o bullet •
- *   - Guión -
- *   - Dos o más espacios consecutivos
- *   - Tab
- *
- * Ejemplos:
- *   "Tornillo 5mm · $850"            → ExcelRow(["Tornillo 5mm", "$850"])
- *   "Camiseta M · 24 · stock"        → ExcelRow(["Camiseta M", "24", "stock"])
- *   "Camiseta M  24"                 → ExcelRow(["Camiseta M", "24"])
- *   "Nota sin precio"                → ExcelRow(["Nota sin precio"])
+ * Patrones soportados (todos producen la misma salida):
+ *   "Grasmuy $23000"       → ["Grasmuy",  "23000"]
+ *   "Canal 2  $38.000"     → ["Canal 2",  "38000"]
+ *   "Telecom · $18000"     → ["Telecom",  "18000"]
+ *   "precio1 13"           → ["precio1",  "13"]
+ *   "precio1$13"           → ["precio1",  "13"]
+ *   "Solo texto"           → ["Solo texto"]        ← sin valor numérico
  */
 class TextStructureParser {
 
-    // Separadores reconocidos entre columnas
-    private val separatorRegex = Regex("""[\t·•\-]{1,3}|\s{2,}""")
+    // Detecta el patrón:  <descripción>  [separador opcional]  [$] <número>
+    // Separadores aceptados: espacios, ·, •, -, tab (entre descripción y precio)
+    private val pricePattern = Regex(
+        """^(.+?)\s*[·•\-\t]?\s*\$?\s*(\d[\d.,]*)$"""
+    )
 
-    // Detecta si un token parece valor numérico o precio
-    private val valueRegex = Regex("""^\$?\d+([.,]\d+)?$""")
-
-    fun parse(rawLines: List<String>): List<ExcelRow> {
-        return rawLines.map { line -> parseLine(line) }
-    }
+    fun parse(rawLines: List<String>): List<ExcelRow> =
+        rawLines.map { parseLine(it.trim()) }
 
     private fun parseLine(line: String): ExcelRow {
-        val parts = separatorRegex.split(line)
-            .map { it.trim() }
-            .filter { it.isNotBlank() }
-
-        return if (parts.size >= 2) {
-            ExcelRow(columns = parts)
+        val match = pricePattern.matchEntire(line)
+        return if (match != null) {
+            val description = match.groupValues[1].trim()
+            val amount = match.groupValues[2]
+                .replace(".", "")   // elimina puntos de miles: 38.000 → 38000
+                .replace(",", ".")  // normaliza coma decimal: 38,5 → 38.5
+            ExcelRow(listOf(description, amount))
         } else {
-            ExcelRow(columns = splitByTrailingValue(line))
-        }
-    }
-
-    /**
-     * Fallback: busca un número o precio al final de la línea.
-     * "Camiseta M 24" → ["Camiseta M", "24"]
-     */
-    private fun splitByTrailingValue(line: String): List<String> {
-        val tokens = line.trim().split(" ")
-        val lastToken = tokens.last()
-
-        return if (tokens.size > 1 && valueRegex.matches(lastToken)) {
-            listOf(tokens.dropLast(1).joinToString(" "), lastToken)
-        } else {
-            listOf(line.trim())
+            // Línea sin número reconocible → celda única
+            ExcelRow(listOf(line))
         }
     }
 }

@@ -1,6 +1,7 @@
 package com.nirv.scansheet.ui.capture
 
 import android.graphics.Bitmap
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nirv.scansheet.data.ocr.MlKitOcrProcessor
@@ -31,14 +32,19 @@ class CaptureViewModel(
      * Corre el OCR real con ML Kit.
      */
     fun onBitmapCaptured(bitmap: Bitmap) {
+        Log.d("CaptureViewModel", "onBitmapCaptured called — bitmap ${bitmap.width}x${bitmap.height}")
         viewModelScope.launch {
             _uiState.value = CaptureUiState.Loading
             runCatching {
+                Log.d("CaptureViewModel", "Starting OCR...")
                 val rawLines = ocrProcessor.process(bitmap)
+                Log.d("CaptureViewModel", "OCR done — ${rawLines.size} lines: $rawLines")
                 processOcrResult(rawLines)
             }.onSuccess {
+                Log.d("CaptureViewModel", "processOcrResult success → Done")
                 _uiState.value = CaptureUiState.Done
             }.onFailure { error ->
+                Log.e("CaptureViewModel", "OCR/process error: ${error.message}", error)
                 _uiState.value = CaptureUiState.Error(error.message ?: "Error al procesar imagen")
             }
         }

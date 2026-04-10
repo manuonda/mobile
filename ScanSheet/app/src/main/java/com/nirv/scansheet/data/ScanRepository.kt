@@ -21,6 +21,14 @@ class ScanRepository {
 
     fun getRows(): List<ExcelRow> = _rows.value
 
+    fun updateRow(index: Int, row: ExcelRow) {
+        val current = _rows.value.toMutableList()
+        if (index in current.indices) {
+            current[index] = row
+            _rows.value = current
+        }
+    }
+
     fun clear() {
         _rows.value = emptyList()
     }

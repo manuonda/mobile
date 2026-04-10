@@ -58,7 +58,9 @@ fun AppNavHost() {
                     ExportScreen(
                          onBack = { backStack.removeLastOrNull() },
                          onNewScan = {
+                             // Resetea a [Home, Capture] para que ← en Capture vuelva a Home
                              backStack.clear()
+                             backStack.add(Home)
                              backStack.add(Capture)
                          }
                      )

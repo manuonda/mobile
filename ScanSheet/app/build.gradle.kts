@@ -83,8 +83,11 @@ dependencies {
     // ML Kit OCR (bundled — funciona sin internet)
     implementation("com.google.mlkit:text-recognition:16.0.1")
 
-    // Apache POI — generación de .xlsx
-    implementation("org.apache.poi:poi-ooxml:5.3.0")
+    // ML Kit Document Scanner (detección de bordes + corrección de perspectiva)
+    implementation("com.google.android.gms:play-services-mlkit-document-scanner:16.0.0-beta1")
+
+    // FastExcel — generación de .xlsx liviana, sin dependencias problemáticas en Android
+    implementation("org.dhatim:fastexcel:0.18.4")
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.1")
