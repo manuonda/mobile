@@ -11,6 +11,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,11 +24,12 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.BottomAppBar
@@ -46,7 +48,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -58,8 +60,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.tooling.preview.Preview
@@ -74,13 +78,6 @@ import kotlin.math.roundToInt
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SignatureScreen
-//
-// Muestra el documento (última imagen) y permite:
-//   • Seleccionar / importar una firma guardada
-//   • Arrastrar la firma sobre el documento (zona central del overlay)
-//   • Redimensionar arrastrando la esquina inferior-derecha
-//   • Cambiar el color de tinta (panel "Editar" — esquina superior-derecha)
-//   • Confirmar → bake de la firma en el bitmap
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
@@ -89,99 +86,94 @@ fun SignatureScreen(
     onDrawNew: () -> Unit,
     viewModel: SignatureViewModel = koinViewModel()
 ) {
-    val images          by viewModel.images.collectAsStateWithLifecycle()
-    val savedSignatures by viewModel.savedSignatures.collectAsStateWithLifecycle()
-    val placedSignature by viewModel.placedSignature.collectAsStateWithLifecycle()
+    val images           by viewModel.images.collectAsStateWithLifecycle()
+    val savedSignatures  by viewModel.savedSignatures.collectAsStateWithLifecycle()
+    val placedSignatures by viewModel.placedSignatures.collectAsStateWithLifecycle()
+    val selectedId       by viewModel.selectedId.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
-    // ── Bug 3 fix: auto-colocar la firma recién dibujada ────────────────────
-    //
-    // Cuando el usuario termina de dibujar en DrawSignatureScreen y pulsa
-    // "Listo", se guarda en SignatureRepository. savedSignatures.size aumenta.
-    // Si en ese momento no hay ninguna firma colocada, la colocamos automáticamente.
-    // Así el usuario vuelve a SignatureScreen y ya ve la firma sobre el documento
-    // sin tener que abrir el sheet y seleccionarla manualmente.
-    val prevSavedCount = remember { mutableIntStateOf(0) }
-    LaunchedEffect(savedSignatures.size) {
-        if (savedSignatures.size > prevSavedCount.intValue && placedSignature == null) {
-            savedSignatures.lastOrNull()?.let { viewModel.placeSignature(it) }
-        }
-        prevSavedCount.intValue = savedSignatures.size
+    val scrollState = rememberScrollState()
+
+    // Auto-coloca firmas nuevas (dibujadas desde esta pantalla) cerca del área visible
+    LaunchedEffect(savedSignatures) {
+        viewModel.checkAndAutoPlaceNewSignatures(scrollState.value)
     }
 
-    // Lanzador para importar firma desde galería del dispositivo
     val galleryLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.GetContent()
     ) { uri ->
         uri?.let {
             val bitmap = context.contentResolver.openInputStream(it)
                 ?.use { stream -> android.graphics.BitmapFactory.decodeStream(stream) }
-            bitmap?.let { bmp -> viewModel.placeSignature(bmp) }
+            bitmap?.let { bmp ->
+                viewModel.placeSignature(bmp, initialY = scrollState.value.toFloat() + 120f)
+            }
         }
     }
 
     SignatureScreenContent(
-        documentBitmap      = images.lastOrNull(),
-        savedSignatures     = savedSignatures,
-        placedSignature     = placedSignature,
-        onBack              = onBack,
-        onDrawNew           = onDrawNew,
-        onSignatureSelected = { viewModel.placeSignature(it) },
-        onMoveSignature     = { dx, dy -> viewModel.moveSignature(dx, dy) },
-        onResizeSignature   = { dw, dh -> viewModel.resizeSignature(dw, dh) },
-        onUpdateColor       = { color -> viewModel.updateSignatureColor(color) },
-        onRemovePlaced      = { viewModel.removePlacedSignature() },
+        images           = images,
+        savedSignatures  = savedSignatures,
+        placedSignatures = placedSignatures,
+        selectedId       = selectedId,
+        scrollState      = scrollState,
+        onBack           = onBack,
+        onDrawNew        = onDrawNew,
+        onSignatureSelected = { bitmap ->
+            viewModel.placeSignature(bitmap, initialY = scrollState.value.toFloat() + 120f)
+        },
+        onSelectSignature   = { viewModel.selectSignature(it) },
+        onDeselectAll       = { viewModel.deselectAll() },
+        onMoveSignature     = { id, dx, dy -> viewModel.moveSignature(id, dx, dy) },
+        onResizeSignature   = { id, dw, dh -> viewModel.resizeSignature(id, dw, dh) },
+        onRotateSignature   = { id, delta -> viewModel.rotateSignature(id, delta) },
+        onUpdateColor       = { id, color -> viewModel.updateSignatureColor(id, color) },
+        onRemovePlaced      = { viewModel.removePlacedSignature(it) },
         onImportFromGallery = { galleryLauncher.launch("image/*") },
-        onConfirm           = { imageSize, density ->
-            viewModel.applySignatureAtPosition(imageSize, density)
+        onConfirm           = { imageLayouts, density ->
+            viewModel.applyAllSignatures(imageLayouts, density)
             onBack()
         }
     )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SignatureScreenContent — composable puro (sin Koin), testeable con @Preview
+// SignatureScreenContent
 // ─────────────────────────────────────────────────────────────────────────────
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SignatureScreenContent(
-    documentBitmap: Bitmap?,
+    images: List<Bitmap>,
     savedSignatures: List<Bitmap>,
-    placedSignature: PlacedSignature?,
+    placedSignatures: List<PlacedSignature>,
+    selectedId: Int?,
+    scrollState: androidx.compose.foundation.ScrollState,
     onBack: () -> Unit,
     onDrawNew: () -> Unit,
     onSignatureSelected: (Bitmap) -> Unit,
-    onMoveSignature: (Float, Float) -> Unit,
-    onResizeSignature: (Float, Float) -> Unit,   // dWidthDp, dHeightDp
-    onUpdateColor: (Color) -> Unit,
-    onRemovePlaced: () -> Unit,
+    onSelectSignature: (Int?) -> Unit,
+    onDeselectAll: () -> Unit,
+    onMoveSignature: (Int, Float, Float) -> Unit,
+    onResizeSignature: (Int, Float, Float) -> Unit,
+    onRotateSignature: (Int, Float) -> Unit,
+    onUpdateColor: (Int, Color) -> Unit,
+    onRemovePlaced: (Int) -> Unit,
     onImportFromGallery: () -> Unit,
-    onConfirm: (IntSize, Float) -> Unit          // imageLayoutSize, screenDensity
+    onConfirm: (Map<Int, ImageLayoutInfo>, Float) -> Unit
 ) {
-    // ── Estado local de la pantalla ──────────────────────────────────────────
     var showSignatureSheet  by remember { mutableStateOf(false) }
     var showAddOptionsSheet by remember { mutableStateOf(false) }
     var showEditPanel       by remember { mutableStateOf(false) }
+    var strokeWidth         by remember { mutableFloatStateOf(0.4f) }
+    val density             = LocalDensity.current.density
 
-    // strokeWidth solo es visual (slider de edición), no afecta el bake
-    var strokeWidth by remember { mutableFloatStateOf(0.4f) }
+    // Layout de cada imagen: clave = índice, valor = topY en canvas + tamaño display
+    val imageLayouts = remember { mutableStateMapOf<Int, ImageLayoutInfo>() }
 
-    // Tamaño en px del widget Image() — necesario para escalar posición al bitmap
-    var imageLayoutSize by remember { mutableStateOf(IntSize.Zero) }
-
-    // Densidad de pantalla (dp → px) — necesaria para applySignatureAtPosition
-    val density = LocalDensity.current.density
-
-    // ── rememberUpdatedState — callbacks siempre actualizados ───────────────
-    //
-    // pointerInput usa coroutines que se lanzan UNA vez (con clave Unit).
-    // Si usáramos las lambdas directamente, el coroutine capturaría la versión
-    // inicial y nunca vería actualizaciones.
-    // rememberUpdatedState garantiza que la coroutine siempre llama la lambda
-    // más reciente sin reiniciarse (lo que cancelaría el gesto en curso).
-    val latestOnMove   by rememberUpdatedState(onMoveSignature)
-    val latestOnResize by rememberUpdatedState(onResizeSignature)
+    LaunchedEffect(selectedId) {
+        if (selectedId == null) showEditPanel = false
+    }
 
     Scaffold(
         topBar = {
@@ -196,31 +188,24 @@ fun SignatureScreenContent(
         },
         bottomBar = {
             BottomAppBar {
-                // [Firma y sello] — abre el sheet de firmas guardadas
                 TextButton(
-                    onClick = { showSignatureSheet = true },
+                    onClick  = { showSignatureSheet = true },
                     modifier = Modifier.weight(1f)
                 ) {
                     Icon(Icons.Default.Edit, contentDescription = null)
                     Spacer(Modifier.width(4.dp))
                     Text("Firma y sello")
                 }
-
-                // [Fecha] — placeholder futuro
                 TextButton(
-                    onClick = { /* próximamente */ },
+                    onClick  = { /* próximamente */ },
                     modifier = Modifier.weight(1f)
                 ) {
                     Text("Fecha")
                 }
-
-                // [✓] — aplica la firma y vuelve a Preview
-                // Solo habilitado cuando hay una firma colocada
                 Button(
-                    onClick = { onConfirm(imageLayoutSize, density) },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00BFA5)),
-                    modifier = Modifier.padding(end = 8.dp),
-                    enabled = placedSignature != null
+                    onClick  = { onConfirm(imageLayouts.toMap(), density) },
+                    colors   = ButtonDefaults.buttonColors(containerColor = Color(0xFF00BFA5)),
+                    modifier = Modifier.padding(end = 8.dp)
                 ) {
                     Text("✓", color = Color.White)
                 }
@@ -233,185 +218,104 @@ fun SignatureScreenContent(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-
-            // ── Documento de fondo ───────────────────────────────────────────
-            if (documentBitmap != null) {
-                Image(
-                    bitmap = documentBitmap.asImageBitmap(),
-                    contentDescription = "Documento",
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .onGloballyPositioned { coords ->
-                            // Captura el tamaño real del widget en pantalla
-                            imageLayoutSize = coords.size
-                        },
-                    contentScale = ContentScale.Fit
-                )
-            }
-
-            // ── Overlay arrastrable de la firma ──────────────────────────────
+            // ── Canvas scrollable: imágenes + firmas en el mismo espacio ──────
             //
-            // El overlay tiene 3 zonas de interacción:
-            //   • Esquina superior-izquierda (+) : indicador visual, sin acción
-            //   • Esquina superior-derecha  (...): abre/cierra panel "Editar"
-            //   • Esquina inferior-derecha  (↗) : drag para redimensionar
-            //   • Zona central (imagen)          : drag para mover
-            //
-            placedSignature?.let { placed ->
-
-                Box(
-                    modifier = Modifier
-                        .offset {
-                            // placed.offsetX / offsetY están en px de pantalla
-                            IntOffset(
-                                placed.offsetX.roundToInt(),
-                                placed.offsetY.roundToInt()
-                            )
-                        }
-                        // Tamaño controlado por el ViewModel (en dp)
-                        .size(width = placed.widthDp.dp, height = placed.heightDp.dp)
-                        .border(
-                            width = 1.5.dp,
-                            color = Color(0xFF00BFA5),
-                            shape = RoundedCornerShape(4.dp)
-                        )
-                        // ── Drag en el Box completo = mover overlay ──────────
-                        //
-                        // CLAVE: pointerInput(Unit) — la clave nunca cambia, así
-                        // el coroutine de detectDragGestures vive toda la sesión
-                        // sin cancelarse. Si usáramos pointerInput(placed), cada
-                        // movimiento actualizaría `placed`, cambiaría la clave y
-                        // cancela el gesto → la firma no se podría arrastrar.
-                        //
-                        // latestOnMove viene de rememberUpdatedState → siempre
-                        // apunta a la lambda más reciente sin reiniciar la coroutine.
-                        .pointerInput(Unit) {
-                            detectDragGestures { _, dragAmount ->
-                                latestOnMove(dragAmount.x, dragAmount.y)
-                            }
-                        }
-                ) {
-
-                    // ── Imagen de la firma ────────────────────────────────────
-                    //
-                    // ColorFilter.tint aplica el color de tinta elegido.
-                    // BlendMode.SrcIn: reemplaza los píxeles opacos de la firma
-                    // con el color seleccionado, preservando transparencia.
-                    Image(
-                        bitmap = placed.bitmap.asImageBitmap(),
-                        contentDescription = "Firma",
-                        colorFilter = if (placed.tintColor != Color.Black) {
-                            ColorFilter.tint(placed.tintColor)
-                        } else null,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(20.dp),    // deja espacio visible para los controles de esquina
-                        contentScale = ContentScale.Fit
-                    )
-
-                    // ── Esquina superior-izquierda: botón X (quitar firma) ───
-                    //
-                    // Cambiamos + por X para permitir quitar la firma fácilmente
-                    Box(
-                        modifier = Modifier
-                            .size(24.dp)
-                            .align(Alignment.TopStart)
-                            .clip(CircleShape)
-                            .background(Color(0xFF00BFA5))
-                    ) {
-                        IconButton(
-                            onClick = onRemovePlaced,
-                            modifier = Modifier.size(24.dp)
-                        ) {
-                            Icon(
-                                Icons.Default.Close,
-                                contentDescription = "Quitar firma",
-                                tint = Color.White,
-                                modifier = Modifier.size(14.dp)
-                            )
-                        }
-                    }
-
-                    // ── Esquina superior-derecha: botón "..." (panel Editar) ─
-                    //
-                    // Al pulsarlo muestra/oculta el panel de edición de color.
-                    Box(
-                        modifier = Modifier
-                            .size(24.dp)
-                            .align(Alignment.TopEnd)
-                            .clip(CircleShape)
-                            .background(Color(0xFF00BFA5))
-                    ) {
-                        IconButton(
-                            onClick = { showEditPanel = !showEditPanel },
-                            modifier = Modifier.size(24.dp)
-                        ) {
-                            // Usamos "⋮" como texto porque Material no tiene MoreVert pequeño aquí
-                            Text("⋮", color = Color.White, fontSize = 14.sp)
-                        }
-                    }
-
-                    // ── Esquina inferior-derecha: handle de redimensión ──────
-                    //
-                    // detectDragGestures convierte el dragAmount de px a dp
-                    // dividiendo por la densidad de pantalla antes de enviarlo
-                    // al ViewModel (que trabaja en dp para Modifier.size()).
-                    Box(
-                        modifier = Modifier
-                            .size(24.dp)
-                            .align(Alignment.BottomEnd)
-                            .clip(CircleShape)
-                            .background(Color(0xFF00BFA5))
-                            .pointerInput(Unit) {
-                                detectDragGestures { _, dragAmount ->
-                                    // px → dp para que ViewModel sea consistente
-                                    latestOnResize(
-                                        dragAmount.x / density,
-                                        dragAmount.y / density
+            // Ambas capas (imágenes y overlays de firma) viven dentro del mismo Box
+            // con verticalScroll, por lo que comparten el mismo sistema de coordenadas
+            // y desplazan juntas al hacer scroll.
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(scrollState)
+                    // Tap en área vacía → deselecciona la firma activa
+                    .pointerInput(Unit) { detectTapGestures { onDeselectAll() } }
+            ) {
+                // ── Columna de imágenes ──────────────────────────────────────
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    images.forEachIndexed { index, bitmap ->
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 4.dp)
+                                .onGloballyPositioned { coords ->
+                                    // positionInParent() = y desde el tope del Column (= canvas)
+                                    imageLayouts[index] = ImageLayoutInfo(
+                                        topY        = coords.positionInParent().y,
+                                        displaySize = coords.size
                                     )
                                 }
+                        ) {
+                            Image(
+                                bitmap             = bitmap.asImageBitmap(),
+                                contentDescription = "Página ${index + 1}",
+                                modifier           = Modifier.fillMaxWidth(),
+                                contentScale       = ContentScale.FillWidth
+                            )
+                            // Badge de página
+                            Box(
+                                modifier = Modifier
+                                    .padding(8.dp)
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(Color(0x99000000))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    .align(Alignment.TopStart)
+                            ) {
+                                Text(
+                                    text     = "${index + 1}/${images.size}",
+                                    color    = Color.White,
+                                    fontSize = 12.sp
+                                )
                             }
-                    ) {
-                        // Icono de flecha diagonal para indicar redimensión
-                        Text(
-                            "↗",
-                            color = Color.White,
-                            fontSize = 12.sp,
-                            modifier = Modifier.align(Alignment.Center)
-                        )
+                        }
                     }
+                    // Espacio al final para poder mover firmas hasta el fondo de la última imagen
+                    Spacer(Modifier.height(80.dp))
+                }
+
+                // ── Firma(s) superpuestas sobre el canvas ────────────────────
+                //
+                // Se posicionan con offset absoluto dentro del mismo Box scrollable,
+                // así se desplazan junto con las imágenes al hacer scroll.
+                placedSignatures.forEach { placed ->
+                    SignatureOverlay(
+                        placed     = placed,
+                        isSelected = placed.id == selectedId,
+                        density    = density,
+                        onSelect   = { onSelectSignature(placed.id) },
+                        onMove     = { dx, dy -> onMoveSignature(placed.id, dx, dy) },
+                        onResize   = { dw, dh -> onResizeSignature(placed.id, dw, dh) },
+                        onRotate   = { delta -> onRotateSignature(placed.id, delta) },
+                        onRemove   = { onRemovePlaced(placed.id) },
+                        onOpenEdit = { showEditPanel = true }
+                    )
                 }
             }
 
-            // ── Panel "Editar" (desliza desde abajo) ─────────────────────────
-            //
-            // AnimatedVisibility muestra/oculta el panel con animación vertical.
-            // slideInVertically: entra desde la parte inferior (initialOffsetY > 0).
-            // slideOutVertically: sale hacia la parte inferior.
+            // ── Panel "Editar" (desliza desde abajo, fuera del scroll) ───────
+            val selectedSignature = placedSignatures.firstOrNull { it.id == selectedId }
             AnimatedVisibility(
-                visible = showEditPanel,
-                enter = slideInVertically(initialOffsetY = { it }),
-                exit  = slideOutVertically(targetOffsetY = { it }),
+                visible  = showEditPanel && selectedSignature != null,
+                enter    = slideInVertically(initialOffsetY = { it }),
+                exit     = slideOutVertically(targetOffsetY = { it }),
                 modifier = Modifier.align(Alignment.BottomCenter)
             ) {
-                EditSignaturePanel(
-                    currentColor = placedSignature?.tintColor ?: Color.Black,
-                    strokeWidth  = strokeWidth,
-                    onColorSelected = { color ->
-                        onUpdateColor(color)
-                    },
-                    onStrokeWidthChanged = { strokeWidth = it },
-                    onClose = { showEditPanel = false }
-                )
+                if (selectedSignature != null) {
+                    EditSignaturePanel(
+                        currentColor         = selectedSignature.tintColor,
+                        strokeWidth          = strokeWidth,
+                        onColorSelected      = { color -> onUpdateColor(selectedSignature.id, color) },
+                        onStrokeWidthChanged = { strokeWidth = it },
+                        onClose              = { showEditPanel = false }
+                    )
+                }
             }
         }
 
         // ── Bottom Sheets ─────────────────────────────────────────────────────
 
-        // Sheet 1: firmas guardadas
         if (showSignatureSheet) {
             SignatureBottomSheet(
-                savedSignatures = savedSignatures,
+                savedSignatures     = savedSignatures,
                 onSignatureSelected = { bitmap ->
                     onSignatureSelected(bitmap)
                     showSignatureSheet = false
@@ -424,17 +328,13 @@ fun SignatureScreenContent(
             )
         }
 
-        // Sheet 2: opciones añadir firma
         if (showAddOptionsSheet) {
             AddSignatureOptionsSheet(
                 onCreateSignature = {
                     showAddOptionsSheet = false
                     onDrawNew()
                 },
-                onScanSignature = {
-                    showAddOptionsSheet = false
-                    // placeholder: próximamente
-                },
+                onScanSignature     = { showAddOptionsSheet = false },
                 onImportFromGallery = {
                     showAddOptionsSheet = false
                     onImportFromGallery()
@@ -446,13 +346,131 @@ fun SignatureScreenContent(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// SignatureOverlay — firma flotante en el canvas
+//
+//   isSelected = false → solo imagen, tap para seleccionar
+//   isSelected = true  → borde teal + controles X / ⋮ / ↗, drag para mover
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun SignatureOverlay(
+    placed: PlacedSignature,
+    isSelected: Boolean,
+    density: Float,
+    onSelect: () -> Unit,
+    onMove: (Float, Float) -> Unit,
+    onResize: (Float, Float) -> Unit,
+    onRotate: (Float) -> Unit,
+    onRemove: () -> Unit,
+    onOpenEdit: () -> Unit
+) {
+    val latestOnMove   by rememberUpdatedState(onMove)
+    val latestOnResize by rememberUpdatedState(onResize)
+    val latestOnRotate by rememberUpdatedState(onRotate)
+
+    Box(
+        modifier = Modifier
+            .offset { IntOffset(placed.offsetX.roundToInt(), placed.offsetY.roundToInt()) }
+            .size(width = placed.widthDp.dp, height = placed.heightDp.dp)
+            // Aplica rotación visual alrededor del centro del overlay
+            .graphicsLayer { rotationZ = placed.rotation }
+            .then(
+                if (isSelected) Modifier.border(
+                    width = 1.5.dp,
+                    color = Color(0xFF00BFA5),
+                    shape = RoundedCornerShape(4.dp)
+                ) else Modifier
+            )
+            .then(
+                if (isSelected) Modifier.pointerInput(Unit) {
+                    detectDragGestures { _, dragAmount ->
+                        latestOnMove(dragAmount.x, dragAmount.y)
+                    }
+                } else Modifier
+            )
+    ) {
+        // Imagen de la firma
+        Image(
+            bitmap       = placed.bitmap.asImageBitmap(),
+            contentDescription = "Firma",
+            colorFilter  = if (placed.tintColor != Color.Black) {
+                ColorFilter.tint(placed.tintColor)
+            } else null,
+            modifier     = Modifier
+                .fillMaxSize()
+                .padding(if (isSelected) 20.dp else 0.dp)
+                .then(
+                    if (!isSelected) Modifier.pointerInput(Unit) {
+                        detectTapGestures { onSelect() }
+                    } else Modifier
+                ),
+            contentScale = ContentScale.Fit
+        )
+
+        if (isSelected) {
+            // X — eliminar (esquina superior-izquierda)
+            Box(
+                modifier = Modifier
+                    .size(24.dp)
+                    .align(Alignment.TopStart)
+                    .clip(CircleShape)
+                    .background(Color(0xFF00BFA5))
+            ) {
+                IconButton(onClick = onRemove, modifier = Modifier.size(24.dp)) {
+                    Icon(
+                        Icons.Default.Close,
+                        contentDescription = "Quitar firma",
+                        tint     = Color.White,
+                        modifier = Modifier.size(14.dp)
+                    )
+                }
+            }
+
+            // ⋮ — editar color (esquina superior-derecha)
+            Box(
+                modifier = Modifier
+                    .size(24.dp)
+                    .align(Alignment.TopEnd)
+                    .clip(CircleShape)
+                    .background(Color(0xFF00BFA5))
+            ) {
+                IconButton(onClick = onOpenEdit, modifier = Modifier.size(24.dp)) {
+                    Text("⋮", color = Color.White, fontSize = 14.sp)
+                }
+            }
+
+            // ↗↻ — redimensionar Y rotar (esquina inferior-derecha)
+            //   drag horizontal → rota  (izq = antihorario, der = horario)
+            //   drag vertical   → escala proporcionalmente (arriba = encoge, abajo = agranda)
+            Box(
+                modifier = Modifier
+                    .size(24.dp)
+                    .align(Alignment.BottomEnd)
+                    .clip(CircleShape)
+                    .background(Color(0xFF00BFA5))
+                    .pointerInput(Unit) {
+                        detectDragGestures { _, dragAmount ->
+                            // Rotación: componente horizontal, suavizada
+                            latestOnRotate(dragAmount.x / 3f)
+                            // Escala proporcional: componente vertical en dp
+                            val scaleDp = dragAmount.y / density
+                            latestOnResize(scaleDp, scaleDp)
+                        }
+                    }
+            ) {
+                Text(
+                    "↗",
+                    color    = Color.White,
+                    fontSize = 12.sp,
+                    modifier = Modifier.align(Alignment.Center)
+                )
+            }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // EditSignaturePanel
-//
-// Panel que aparece deslizando desde abajo al pulsar "⋮" en el overlay.
-// Permite cambiar el color de tinta y el grosor visual del trazo.
-//
-// Colores disponibles (igual que CamScanner):
-//   Sin color (transparente/gris) | Negro | Azul | Rojo | Blanco | Marrón | Naranja
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
@@ -463,15 +481,10 @@ fun EditSignaturePanel(
     onStrokeWidthChanged: (Float) -> Unit,
     onClose: () -> Unit
 ) {
-    // Paleta de colores disponibles para la firma
     val colors = listOf(
-        Color.Gray,          // Sin color / deshabilitar tinte
-        Color.Black,
-        Color(0xFF1565C0),   // Azul oscuro
-        Color(0xFFC62828),   // Rojo
-        Color.White,
-        Color(0xFF4E342E),   // Marrón
-        Color(0xFFE65100)    // Naranja
+        Color.Gray, Color.Black,
+        Color(0xFF1565C0), Color(0xFFC62828),
+        Color.White, Color(0xFF4E342E), Color(0xFFE65100)
     )
 
     Column(
@@ -481,76 +494,36 @@ fun EditSignaturePanel(
             .background(MaterialTheme.colorScheme.surface)
             .padding(horizontal = 20.dp, vertical = 16.dp)
     ) {
-
-        // ── Encabezado del panel ──────────────────────────────────────────────
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = "Editar",
-                style = MaterialTheme.typography.titleMedium
-            )
-            TextButton(onClick = onClose) {
-                Text("OK", color = Color(0xFF00BFA5))
-            }
+            Text("Editar", style = MaterialTheme.typography.titleMedium)
+            TextButton(onClick = onClose) { Text("OK", color = Color(0xFF00BFA5)) }
         }
-
         Spacer(Modifier.height(12.dp))
-
-        // ── Slider de grosor de trazo (solo visual) ───────────────────────────
-        //
-        // Este slider no afecta el bake en bitmap; es un indicador
-        // de previsualización del grosor del trazado.
-        Text(
-            text = "Grosor",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Slider(
-            value = strokeWidth,
-            onValueChange = onStrokeWidthChanged,
-            valueRange = 0f..1f,
-            modifier = Modifier.fillMaxWidth()
-        )
-
+        Text("Grosor", style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Slider(value = strokeWidth, onValueChange = onStrokeWidthChanged,
+            valueRange = 0f..1f, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(12.dp))
-
-        // ── Selector de color ────────────────────────────────────────────────
-        //
-        // Fila de círculos de color. El color activo tiene un borde teal.
-        // El primero (gris) desactiva el tinte → la firma aparece en su
-        // color original (negro por defecto del canvas DrawSignature).
-        Text(
-            text = "Color de tinta",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        Text("Color de tinta", style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(8.dp))
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically) {
             colors.forEach { color ->
-                val isSelected = color == currentColor
+                val sel = color == currentColor
                 Box(
                     modifier = Modifier
-                        .size(32.dp)
-                        .clip(CircleShape)
-                        // Borde teal cuando está seleccionado
-                        .border(
-                            width = if (isSelected) 3.dp else 1.dp,
-                            color = if (isSelected) Color(0xFF00BFA5) else Color.LightGray,
-                            shape = CircleShape
-                        )
-                        .background(color)
-                        // clickable es la forma correcta de responder a taps en Compose
-                        .clickable { onColorSelected(color) }
+                        .size(32.dp).clip(CircleShape)
+                        .border(if (sel) 3.dp else 1.dp,
+                            if (sel) Color(0xFF00BFA5) else Color.LightGray, CircleShape)
+                        .background(color).clickable { onColorSelected(color) }
                 )
             }
         }
-
         Spacer(Modifier.height(16.dp))
     }
 }
@@ -564,15 +537,20 @@ fun EditSignaturePanel(
 private fun SignatureScreenEmptyPreview() {
     ConvertPngToPdfTheme {
         SignatureScreenContent(
-            documentBitmap      = null,
+            images              = emptyList(),
             savedSignatures     = emptyList(),
-            placedSignature     = null,
+            placedSignatures    = emptyList(),
+            selectedId          = null,
+            scrollState         = rememberScrollState(),
             onBack              = {},
             onDrawNew           = {},
             onSignatureSelected = {},
-            onMoveSignature     = { _, _ -> },
-            onResizeSignature   = { _, _ -> },
-            onUpdateColor       = {},
+            onSelectSignature   = {},
+            onDeselectAll       = {},
+            onMoveSignature     = { _, _, _ -> },
+            onResizeSignature   = { _, _, _ -> },
+            onRotateSignature   = { _, _ -> },
+            onUpdateColor       = { _, _ -> },
             onRemovePlaced      = {},
             onImportFromGallery = {},
             onConfirm           = { _, _ -> }
@@ -585,11 +563,8 @@ private fun SignatureScreenEmptyPreview() {
 private fun EditSignaturePanelPreview() {
     ConvertPngToPdfTheme {
         EditSignaturePanel(
-            currentColor         = Color.Black,
-            strokeWidth          = 0.4f,
-            onColorSelected      = {},
-            onStrokeWidthChanged = {},
-            onClose              = {}
+            currentColor = Color.Black, strokeWidth = 0.4f,
+            onColorSelected = {}, onStrokeWidthChanged = {}, onClose = {}
         )
     }
 }

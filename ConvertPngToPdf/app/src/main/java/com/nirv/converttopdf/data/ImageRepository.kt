@@ -28,6 +28,14 @@ class ImageRepository {
         _images.value = emptyList()
     }
 
+    fun replaceImage(index: Int, bitmap: Bitmap) {
+        val current = _images.value.toMutableList()
+        if (index in current.indices) {
+            current[index] = bitmap
+            _images.value = current
+        }
+    }
+
     fun reorderImages(from: Int, to: Int) {
         val current = _images.value.toMutableList()
         if (from in current.indices && to in current.indices) {

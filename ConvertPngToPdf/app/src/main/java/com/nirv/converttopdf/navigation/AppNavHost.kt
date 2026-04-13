@@ -9,6 +9,7 @@ import com.nirv.converttopdf.ui.capture.CaptureScreen
 import com.nirv.converttopdf.ui.export.ExportScreen
 import com.nirv.converttopdf.ui.home.HomeScreen
 import com.nirv.converttopdf.ui.preview.PreviewScreen
+import com.nirv.converttopdf.ui.settings.SettingsScreen
 import com.nirv.converttopdf.ui.signature.DrawSignatureScreen
 import com.nirv.converttopdf.ui.signature.SignatureScreen
 
@@ -23,9 +24,9 @@ fun AppNavHost() {
             when (key) {
                 is Home -> NavEntry(key = Home) {
                     HomeScreen(
-                        onScanNew     = { backStack.add(Capture) },
-                        onFromGallery = { backStack.add(Capture) },
-                        onPreview     = { backStack.add(Preview) }
+                        onScanNew  = { backStack.add(Capture) },
+                        onFiles    = { backStack.add(Capture) },
+                        onSettings = { backStack.add(Settings) }
                     )
                 }
 
@@ -62,6 +63,12 @@ fun AppNavHost() {
                 // Al guardar, SignatureViewModel lo ve reactivamente vía SignatureRepository
                 is DrawSign -> NavEntry(key = DrawSign) {
                     DrawSignatureScreen(
+                        onBack = { backStack.removeLastOrNull() }
+                    )
+                }
+
+                is Settings -> NavEntry(key = Settings) {
+                    SettingsScreen(
                         onBack = { backStack.removeLastOrNull() }
                     )
                 }

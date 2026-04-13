@@ -7,3 +7,4 @@ data object Export
 
 data object Sign
 data object DrawSign
+data object Settings

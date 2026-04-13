@@ -47,12 +47,12 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.koin.androidx.compose.koinViewModel
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PreviewScreen(
     onBack: () -> Unit,
@@ -62,20 +62,47 @@ fun PreviewScreen(
 ) {
     val images     by viewModel.images.collectAsStateWithLifecycle()
     val shareState by viewModel.shareState.collectAsStateWithLifecycle()
+
+    PreviewScreenContent(
+        images = images,
+        shareState = shareState,
+        onBack = onBack,
+        onAddMore = onAddMore,
+        onSign = onSign,
+        onDeleteImage = { viewModel.removeImage(it) },
+        onClearAll = { viewModel.clearAll() },
+        onShare = { viewModel.shareAsPdf() },
+        onResetShareState = { viewModel.resetShareState() }
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PreviewScreenContent(
+    images: List<Bitmap>,
+    shareState: ShareState,
+    onBack: () -> Unit,
+    onAddMore: () -> Unit,
+    onSign: () -> Unit,
+    onDeleteImage: (Int) -> Unit,
+    onClearAll: () -> Unit,
+    onShare: () -> Unit,
+    onResetShareState: () -> Unit
+) {
     val context = LocalContext.current
 
     // LaunchedEffect se dispara cada vez que shareState cambia.
     // Cuando el PDF está listo lanza el Intent del sistema para compartir.
     LaunchedEffect(shareState) {
         if (shareState is ShareState.Ready) {
-            val uri = (shareState as ShareState.Ready).uri
+            val uri = shareState.uri
             val intent = Intent(Intent.ACTION_SEND).apply {
                 type = "application/pdf"
                 putExtra(Intent.EXTRA_STREAM, uri)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
             context.startActivity(Intent.createChooser(intent, "Compartir PDF"))
-            viewModel.resetShareState()
+            onResetShareState()
         }
     }
 
@@ -90,7 +117,7 @@ fun PreviewScreen(
                 },
                 actions = {
                     if (images.isNotEmpty()) {
-                        IconButton(onClick = { viewModel.clearAll() }) {
+                        IconButton(onClick = onClearAll) {
                             Icon(
                                 Icons.Default.Delete,
                                 contentDescription = "Eliminar todas",
@@ -123,7 +150,7 @@ fun PreviewScreen(
                         },
                         label   = { Text("Compartir") },
                         selected = false,
-                        onClick  = { viewModel.shareAsPdf() },
+                        onClick  = onShare,
                         enabled  = shareState !is ShareState.Loading
                     )
                     NavigationBarItem(
@@ -180,7 +207,7 @@ fun PreviewScreen(
                     ImageCard(
                         index    = index,
                         bitmap   = bitmap,
-                        onDelete = { viewModel.removeImage(index) }
+                        onDelete = { onDeleteImage(index) }
                     )
                 }
                 item { Spacer(Modifier.height(16.dp)) }
@@ -241,4 +268,21 @@ private fun ImageCard(
             }
         }
     }
+}
+
+
+@Preview(showBackground = true)
+@Composable
+fun PreviewScreenPreview() {
+     PreviewScreenContent(
+         images = emptyList(),
+         shareState = ShareState.Idle,
+         onBack = {},
+         onAddMore = {},
+         onSign = {},
+         onDeleteImage = {},
+         onClearAll = {},
+         onShare = {},
+         onResetShareState = {}
+     )
 }
