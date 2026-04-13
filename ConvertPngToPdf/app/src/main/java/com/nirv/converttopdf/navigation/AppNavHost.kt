@@ -9,6 +9,7 @@ import com.nirv.converttopdf.ui.capture.CaptureScreen
 import com.nirv.converttopdf.ui.export.ExportScreen
 import com.nirv.converttopdf.ui.home.HomeScreen
 import com.nirv.converttopdf.ui.preview.PreviewScreen
+import com.nirv.converttopdf.ui.signature.DrawSignatureScreen
 import com.nirv.converttopdf.ui.signature.SignatureScreen
 
 @Composable
@@ -32,8 +33,6 @@ fun AppNavHost() {
                     CaptureScreen(
                         onBack = { backStack.removeLastOrNull() },
                         onImagesCaptured = {
-                            // Si Preview ya está en el stack volvemos a él sin duplicarlo.
-                            // Esto ocurre cuando el usuario presiona "Añadir" desde Preview.
                             if (backStack.contains(Preview)) {
                                 backStack.removeLastOrNull()
                             } else {
@@ -51,8 +50,18 @@ fun AppNavHost() {
                     )
                 }
 
+                // SignatureScreen: documento + overlay arrastrable + sheets
                 is Sign -> NavEntry(key = Sign) {
                     SignatureScreen(
+                        onBack    = { backStack.removeLastOrNull() },
+                        onDrawNew = { backStack.add(DrawSign) }
+                    )
+                }
+
+                // DrawSignatureScreen: canvas para crear una firma nueva
+                // Al guardar, SignatureViewModel lo ve reactivamente vía SignatureRepository
+                is DrawSign -> NavEntry(key = DrawSign) {
+                    DrawSignatureScreen(
                         onBack = { backStack.removeLastOrNull() }
                     )
                 }

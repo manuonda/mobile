@@ -6,3 +6,4 @@ data object Preview
 data object Export
 
 data object Sign
+data object DrawSign
