@@ -26,7 +26,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.koin.androidx.compose.koinViewModel
@@ -39,7 +38,6 @@ fun ExportScreen(
     viewModel: ExportViewModel = koinViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val context = LocalContext.current
 
     Scaffold(
         topBar = {
@@ -82,7 +80,7 @@ fun ExportScreen(
                     )
                     Spacer(Modifier.height(24.dp))
                     Button(
-                        onClick = { viewModel.generatePdf(context) },
+                        onClick = { viewModel.generatePdf() },
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Icon(Icons.Default.PictureAsPdf, contentDescription = null)
@@ -113,7 +111,7 @@ fun ExportScreen(
                     )
                     Spacer(Modifier.height(24.dp))
                     Button(
-                        onClick = { viewModel.shareFile(context, uri) },
+                        onClick = { viewModel.shareFile(uri) },
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text("Compartir / Guardar")
@@ -134,7 +132,7 @@ fun ExportScreen(
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Spacer(Modifier.height(16.dp))
-                    Button(onClick = { viewModel.generatePdf(context) }) {
+                    Button(onClick = { viewModel.generatePdf() }) {
                         Text("Reintentar")
                     }
                 }

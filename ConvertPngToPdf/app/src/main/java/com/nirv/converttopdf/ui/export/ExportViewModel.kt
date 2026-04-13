@@ -1,9 +1,10 @@
 package com.nirv.converttopdf.ui.export
 
+import android.app.Application
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import androidx.lifecycle.ViewModel
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.nirv.converttopdf.data.ImageRepository
 import com.nirv.converttopdf.domain.usecase.ExportToPdfUseCase
@@ -20,14 +21,17 @@ sealed class ExportUiState {
 }
 
 class ExportViewModel(
+    application: Application,
     private val imageRepository: ImageRepository,
     private val exportToPdfUseCase: ExportToPdfUseCase
-) : ViewModel() {
+) : AndroidViewModel(application) {
+
+    private val context: Context get() = getApplication<Application>()
 
     private val _uiState = MutableStateFlow<ExportUiState>(ExportUiState.Idle)
     val uiState: StateFlow<ExportUiState> = _uiState.asStateFlow()
 
-    fun generatePdf(context: Context) {
+    fun generatePdf() {
         val images = imageRepository.getImages()
         if (images.isEmpty()) {
             _uiState.value = ExportUiState.Error("No hay imágenes para exportar")
@@ -46,7 +50,7 @@ class ExportViewModel(
         }
     }
 
-    fun shareFile(context: Context, uri: Uri) {
+    fun shareFile(uri: Uri) {
         val shareIntent = Intent(Intent.ACTION_SEND).apply {
             type = "application/pdf"
             putExtra(Intent.EXTRA_STREAM, uri)

@@ -9,6 +9,7 @@ import com.nirv.converttopdf.ui.capture.CaptureScreen
 import com.nirv.converttopdf.ui.export.ExportScreen
 import com.nirv.converttopdf.ui.home.HomeScreen
 import com.nirv.converttopdf.ui.preview.PreviewScreen
+import com.nirv.converttopdf.ui.signature.SignatureScreen
 
 @Composable
 fun AppNavHost() {
@@ -18,39 +19,54 @@ fun AppNavHost() {
         backStack = backStack,
         onBack = { backStack.removeLastOrNull() },
         entryProvider = { key ->
-            when(key) {
+            when (key) {
                 is Home -> NavEntry(key = Home) {
                     HomeScreen(
-                        onScanNew = { backStack.add(Capture) },
+                        onScanNew     = { backStack.add(Capture) },
                         onFromGallery = { backStack.add(Capture) },
-                        onPreview = { backStack.add(Preview) }
+                        onPreview     = { backStack.add(Preview) }
                     )
                 }
-                
+
                 is Capture -> NavEntry(key = Capture) {
                     CaptureScreen(
                         onBack = { backStack.removeLastOrNull() },
-                        onImagesCaptured = { backStack.add(Preview) }
+                        onImagesCaptured = {
+                            // Si Preview ya está en el stack volvemos a él sin duplicarlo.
+                            // Esto ocurre cuando el usuario presiona "Añadir" desde Preview.
+                            if (backStack.contains(Preview)) {
+                                backStack.removeLastOrNull()
+                            } else {
+                                backStack.add(Preview)
+                            }
+                        }
                     )
                 }
-                
+
                 is Preview -> NavEntry(key = Preview) {
                     PreviewScreen(
-                        onBack = { backStack.removeLastOrNull() },
-                        onExport = { backStack.add(Export) }
+                        onBack    = { backStack.removeLastOrNull() },
+                        onAddMore = { backStack.add(Capture) },
+                        onSign    = { backStack.add(Sign) }
                     )
                 }
-                
+
+                is Sign -> NavEntry(key = Sign) {
+                    SignatureScreen(
+                        onBack = { backStack.removeLastOrNull() }
+                    )
+                }
+
                 is Export -> NavEntry(key = Export) {
                     ExportScreen(
-                        onBack = { backStack.removeLastOrNull() },
+                        onBack    = { backStack.removeLastOrNull() },
                         onNewScan = {
                             backStack.clear()
                             backStack.add(Home)
                         }
                     )
                 }
-                
+
                 else -> NavEntry(key = Unit) {}
             }
         }

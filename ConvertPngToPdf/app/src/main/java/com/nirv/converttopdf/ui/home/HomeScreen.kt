@@ -31,6 +31,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DocumentScanner
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.ui.tooling.preview.Preview
 
 @Composable
 fun HomeScreen(
@@ -142,4 +143,14 @@ fun HomeButton(
             )
         }
     }
+}
+
+@Preview
+@Composable
+fun HomeScreenPreview() {
+    HomeScreen(
+        onScanNew = {},
+        onFromGallery = {},
+        onPreview = {}
+    )
 }

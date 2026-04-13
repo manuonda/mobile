@@ -4,3 +4,5 @@ data object Home
 data object Capture
 data object Preview
 data object Export
+
+data object Sign

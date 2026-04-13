@@ -1,12 +1,12 @@
 package com.nirv.converttopdf.ui.preview
 
+import android.content.Intent
 import android.graphics.Bitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -14,36 +14,41 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AddAPhoto
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Create
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.PictureAsPdf
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.koin.androidx.compose.koinViewModel
 
@@ -51,10 +56,28 @@ import org.koin.androidx.compose.koinViewModel
 @Composable
 fun PreviewScreen(
     onBack: () -> Unit,
-    onExport: () -> Unit,
+    onAddMore: () -> Unit,
+    onSign: () -> Unit,
     viewModel: PreviewViewModel = koinViewModel()
 ) {
-    val images by viewModel.images.collectAsStateWithLifecycle()
+    val images     by viewModel.images.collectAsStateWithLifecycle()
+    val shareState by viewModel.shareState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+
+    // LaunchedEffect se dispara cada vez que shareState cambia.
+    // Cuando el PDF está listo lanza el Intent del sistema para compartir.
+    LaunchedEffect(shareState) {
+        if (shareState is ShareState.Ready) {
+            val uri = (shareState as ShareState.Ready).uri
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "application/pdf"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(Intent.createChooser(intent, "Compartir PDF"))
+            viewModel.resetShareState()
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -78,13 +101,37 @@ fun PreviewScreen(
                 }
             )
         },
-        floatingActionButton = {
+        bottomBar = {
             if (images.isNotEmpty()) {
-                FloatingActionButton(
-                    onClick = onExport,
-                    containerColor = MaterialTheme.colorScheme.primary
-                ) {
-                    Icon(Icons.Default.PictureAsPdf, contentDescription = "Exportar a PDF")
+                NavigationBar {
+                    NavigationBarItem(
+                        icon  = { Icon(Icons.Default.AddAPhoto, contentDescription = null) },
+                        label = { Text("Añadir") },
+                        selected = false,
+                        onClick  = onAddMore
+                    )
+                    NavigationBarItem(
+                        icon = {
+                            if (shareState is ShareState.Loading) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    strokeWidth = 2.dp
+                                )
+                            } else {
+                                Icon(Icons.Default.Share, contentDescription = null)
+                            }
+                        },
+                        label   = { Text("Compartir") },
+                        selected = false,
+                        onClick  = { viewModel.shareAsPdf() },
+                        enabled  = shareState !is ShareState.Loading
+                    )
+                    NavigationBarItem(
+                        icon  = { Icon(Icons.Default.Create, contentDescription = null) },
+                        label = { Text("Firmar") },
+                        selected = false,
+                        onClick  = onSign
+                    )
                 }
             }
         }
@@ -101,7 +148,7 @@ fun PreviewScreen(
                     modifier = Modifier.padding(24.dp)
                 ) {
                     Icon(
-                        Icons.Default.PictureAsPdf,
+                        Icons.Default.AddAPhoto,
                         contentDescription = null,
                         modifier = Modifier.size(64.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
@@ -114,7 +161,7 @@ fun PreviewScreen(
                     )
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        "Agrega imágenes desde el scanner o la galería",
+                        "Usa Añadir para escanear o seleccionar imágenes",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -128,23 +175,15 @@ fun PreviewScreen(
                     .padding(horizontal = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                item {
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "${images.size} imagen(es) — ordénalas y elimina las que no necesites",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Spacer(Modifier.height(8.dp))
-                }
+                item { Spacer(Modifier.height(8.dp)) }
                 itemsIndexed(images) { index, bitmap ->
                     ImageCard(
-                        index = index,
-                        bitmap = bitmap,
+                        index    = index,
+                        bitmap   = bitmap,
                         onDelete = { viewModel.removeImage(index) }
                     )
                 }
-                item { Spacer(Modifier.height(80.dp)) }
+                item { Spacer(Modifier.height(16.dp)) }
             }
         }
     }
@@ -156,45 +195,48 @@ private fun ImageCard(
     bitmap: Bitmap,
     onDelete: () -> Unit
 ) {
-    Card(
+    ElevatedCard(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-        )
+        shape    = RoundedCornerShape(12.dp)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "${index + 1}",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.width(32.dp)
+        Box(modifier = Modifier.fillMaxWidth()) {
+            Image(
+                bitmap = bitmap.asImageBitmap(),
+                contentDescription = "Imagen ${index + 1}",
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(bitmap.width.toFloat() / bitmap.height.toFloat())
+                    .clip(RoundedCornerShape(12.dp)),
+                contentScale = ContentScale.Crop
             )
-
+            // Badge numérico superpuesto en esquina superior izquierda
             Box(
                 modifier = Modifier
-                    .weight(1f)
-                    .aspectRatio(bitmap.width.toFloat() / bitmap.height.toFloat())
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(MaterialTheme.colorScheme.surface)
+                    .padding(8.dp)
+                    .size(28.dp)
+                    .background(
+                        color = MaterialTheme.colorScheme.primary,
+                        shape = CircleShape
+                    )
+                    .align(Alignment.TopStart),
+                contentAlignment = Alignment.Center
             ) {
-                Image(
-                    bitmap = bitmap.asImageBitmap(),
-                    contentDescription = "Imagen ${index + 1}",
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Fit
+                Text(
+                    text       = "${index + 1}",
+                    color      = Color.White,
+                    fontSize   = 12.sp,
+                    fontWeight = FontWeight.Bold
                 )
             }
-
-            IconButton(onClick = onDelete) {
+            // Botón eliminar en esquina superior derecha
+            IconButton(
+                onClick  = onDelete,
+                modifier = Modifier.align(Alignment.TopEnd)
+            ) {
                 Icon(
                     Icons.Default.Close,
                     contentDescription = "Eliminar",
-                    tint = MaterialTheme.colorScheme.error
+                    tint = Color.White
                 )
             }
         }
