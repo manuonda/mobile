@@ -9,6 +9,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,6 +39,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -206,48 +208,81 @@ fun CaptureScreenContent(
     onRequestPermission: () -> Unit,
     onScanClick: () -> Unit
 ) {
+    // Color teal de la app
+    val teal = Color(0xFF00BFA5)
+
     Scaffold(
         topBar = {
+            // ── TopAppBar fondo blanco + iconos teal ─────────────────────────
+            //
+            // TopAppBarDefaults.topAppBarColors() permite sobreescribir
+            // el color de fondo (containerColor) sin afectar el resto del tema.
             TopAppBar(
-                title = { Text("Seleccionar imágenes") },
+                title = {
+                    Text(
+                        "Seleccionar imágenes",
+                        color = Color(0xFF212121)    // texto oscuro sobre fondo blanco
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver")
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Volver",
+                            tint = teal
+                        )
                     }
                 },
                 actions = {
-                    // Botón de cámara / scanner en la barra superior
                     IconButton(onClick = onScanClick) {
                         Icon(
                             Icons.Default.CameraAlt,
                             contentDescription = "Escanear documento",
-                            tint = MaterialTheme.colorScheme.primary
+                            tint = teal
                         )
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.White
+                )
             )
         },
         bottomBar = {
-            // Botón de confirmación fijo abajo — visible solo cuando hay selección
+            // ── Botón flotante de confirmación ───────────────────────────────
+            //
+            // Visible solo cuando hay imágenes seleccionadas.
+            // Flota 30dp sobre la barra de sistema (navigationBarsPadding).
+            // Fondo blanco con sombra visual (borde sutil) para separarse del grid.
+            // Tamaño generoso: padding vertical 18dp + texto grande (18sp).
             if (selectedUris.isNotEmpty()) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.surface)
-                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                        .background(Color.White)
+                        .padding(
+                            start  = 20.dp,
+                            end    = 20.dp,
+                            top    = 12.dp,
+                            bottom = 30.dp   // 30dp desde el fondo del teléfono
+                        )
+                        .navigationBarsPadding()    // respeta la barra de sistema
                 ) {
                     Button(
                         onClick  = onConfirm,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(60.dp),          // botón más alto = más fácil de pulsar
                         colors   = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary
+                            containerColor = teal
                         ),
-                        shape = RoundedCornerShape(12.dp)
+                        shape = RoundedCornerShape(14.dp)
                     ) {
+                        // Línea principal: cantidad seleccionada
                         Text(
-                            text       = "Añadir ${selectedUris.size} imagen${if (selectedUris.size > 1) "es" else ""}",
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize   = 16.sp
+                            text       = "${selectedUris.size} Seleccionada${if (selectedUris.size > 1) "s" else ""}  ·  Añadir",
+                            fontWeight = FontWeight.Bold,
+                            fontSize   = 18.sp,
+                            color      = Color.White
                         )
                     }
                 }
