@@ -24,14 +24,15 @@ fun AppNavHost() {
             when (key) {
                 is Home -> NavEntry(key = Home) {
                     HomeScreen(
-                        onScanNew  = { backStack.add(Capture) },
-                        onFiles    = { backStack.add(Capture) },
+                        onScanNew  = { backStack.add(Capture()) },
+                        onFiles    = { backStack.add(Capture()) },
                         onSettings = { backStack.add(Settings) }
                     )
                 }
 
-                is Capture -> NavEntry(key = Capture) {
+                is Capture -> NavEntry(key = key) {
                     CaptureScreen(
+                        autoLaunchScanner = key.autoLaunchScanner,
                         onBack = { backStack.removeLastOrNull() },
                         onImagesCaptured = {
                             if (backStack.contains(Preview)) {
@@ -46,7 +47,7 @@ fun AppNavHost() {
                 is Preview -> NavEntry(key = Preview) {
                     PreviewScreen(
                         onBack    = { backStack.removeLastOrNull() },
-                        onAddMore = { backStack.add(Capture) },
+                        onAddMore = { backStack.add(Capture(autoLaunchScanner = true)) },
                         onSign    = { backStack.add(Sign) }
                     )
                 }

@@ -81,6 +81,7 @@ import org.koin.androidx.compose.koinViewModel
 fun CaptureScreen(
     onBack: () -> Unit,
     onImagesCaptured: () -> Unit,
+    autoLaunchScanner: Boolean = false,
     viewModel: CaptureViewModel = koinViewModel()
 ) {
     val uiState      by viewModel.uiState.collectAsStateWithLifecycle()
@@ -144,17 +145,10 @@ fun CaptureScreen(
         }
     }
 
-    CaptureScreenContent(
-        galleryUris         = galleryUris,
-        selectedUris        = selectedUris,
-        permissionGranted   = permissionState.status.isGranted,
-        permissionRationale = permissionState.status.shouldShowRationale,
-        onBack              = onBack,
-        onToggleSelect      = { viewModel.toggleSelection(it) },
-        onConfirm           = { viewModel.confirmSelection(context.contentResolver) },
-        onRequestPermission = { permissionState.launchPermissionRequest() },
-        onScanClick         = {
-            val activity = context as? Activity ?: return@CaptureScreenContent
+    // Lambda extraída para poder usarla tanto en el botón como en el auto-launch
+    val launchScanner: () -> Unit = {
+        val activity = context as? Activity
+        if (activity != null) {
             scanner.getStartScanIntent(activity)
                 .addOnSuccessListener { intentSender ->
                     scannerLauncher.launch(IntentSenderRequest.Builder(intentSender).build())
@@ -163,7 +157,36 @@ fun CaptureScreen(
                     viewModel.onError("Scanner no disponible: ${e.message}")
                 }
         }
-    )
+    }
+
+    if (autoLaunchScanner) {
+        // ── Modo cámara directa (viene de "Añadir" en PreviewScreen) ─────────
+        // No mostramos la galería. Lanzamos el scanner inmediatamente y
+        // cuando termina (o se cancela) volvemos atrás sin mostrar ninguna UI.
+        LaunchedEffect(Unit) { launchScanner() }
+
+        // Pantalla en blanco — el scanner de ML Kit se superpone sobre ella.
+        // Si el usuario cancela el scanner sin escanear nada, onBack() vuelve a Preview.
+        Box(
+            modifier         = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            androidx.compose.material3.CircularProgressIndicator()
+        }
+    } else {
+        // ── Modo galería (viene de HomeScreen) ───────────────────────────────
+        CaptureScreenContent(
+            galleryUris         = galleryUris,
+            selectedUris        = selectedUris,
+            permissionGranted   = permissionState.status.isGranted,
+            permissionRationale = permissionState.status.shouldShowRationale,
+            onBack              = onBack,
+            onToggleSelect      = { viewModel.toggleSelection(it) },
+            onConfirm           = { viewModel.confirmSelection(context.contentResolver) },
+            onRequestPermission = { permissionState.launchPermissionRequest() },
+            onScanClick         = launchScanner
+        )
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

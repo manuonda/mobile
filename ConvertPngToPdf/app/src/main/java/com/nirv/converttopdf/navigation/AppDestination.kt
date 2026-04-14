@@ -1,7 +1,7 @@
 package com.nirv.converttopdf.navigation
 
 data object Home
-data object Capture
+data class Capture(val autoLaunchScanner: Boolean = false)
 data object Preview
 data object Export
 
