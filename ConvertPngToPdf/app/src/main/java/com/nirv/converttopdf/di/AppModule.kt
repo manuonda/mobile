@@ -2,6 +2,7 @@ package com.nirv.converttopdf.di
 
 import com.nirv.converttopdf.data.ImageRepository
 import com.nirv.converttopdf.data.PdfExporter
+import com.nirv.converttopdf.data.ReadPdfRepository
 import com.nirv.converttopdf.data.SignatureRepository
 import com.nirv.converttopdf.domain.usecase.ExportToPdfUseCase
 import com.nirv.converttopdf.ui.capture.CaptureViewModel
@@ -14,12 +15,15 @@ import org.koin.android.ext.koin.androidContext
 import org.koin.core.module.dsl.viewModel
 import org.koin.dsl.module
 
+// Modulo de Koin donde se definen las dependencias
+// de la aplicacion (Repositorios, Casos de Uso y ViewModels)
 val appModule = module {
     // Singles — una instancia compartida en toda la app
     single { ImageRepository() }
     single { SignatureRepository() }          // singleton compartido entre SignatureViewModel y DrawSignatureViewModel
     single { PdfExporter(androidContext()) }
     single { ExportToPdfUseCase(get()) }
+    single { ReadPdfRepository(get()) }
 
     // ViewModels
     viewModel { CaptureViewModel(get()) }
