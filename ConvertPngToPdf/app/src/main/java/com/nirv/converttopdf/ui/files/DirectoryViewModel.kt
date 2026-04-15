@@ -1,6 +1,5 @@
 package com.nirv.converttopdf.ui.files
 
-import android.content.Context
 import androidx.lifecycle.ViewModel
 import com.nirv.converttopdf.data.ReadPdfRepository
 import com.nirv.converttopdf.domain.model.PdfFile
@@ -31,4 +30,10 @@ class DirectoryViewModel( private val readPdfRepository: ReadPdfRepository): Vie
         _pdfFiles.value = readPdfRepository.getGeneratePdfs()
     }
 
+    fun deleteFile(file: PdfFile) {
+        val success = readPdfRepository.deleteFile(file.path)
+        if (success) {
+            loadFiles() // Recargamos la lista después de borrar
+        }
+    }
 }

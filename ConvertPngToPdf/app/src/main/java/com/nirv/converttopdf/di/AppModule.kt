@@ -7,6 +7,7 @@ import com.nirv.converttopdf.data.SignatureRepository
 import com.nirv.converttopdf.domain.usecase.ExportToPdfUseCase
 import com.nirv.converttopdf.ui.capture.CaptureViewModel
 import com.nirv.converttopdf.ui.export.ExportViewModel
+import com.nirv.converttopdf.ui.files.DirectoryViewModel
 import com.nirv.converttopdf.ui.preview.PreviewViewModel
 import com.nirv.converttopdf.ui.signature.DrawSignatureViewModel
 import com.nirv.converttopdf.ui.signature.SignatureViewModel
@@ -30,5 +31,6 @@ val appModule = module {
     viewModel { PreviewViewModel(get(), get()) }
     viewModel { ExportViewModel(androidApplication(), get(), get()) }
     viewModel { SignatureViewModel(get(), get()) }      // ImageRepository + SignatureRepository
-    viewModel { DrawSignatureViewModel(get()) }         // SignatureRepository
+    viewModel { DrawSignatureViewModel(get()) }
+    viewModel { DirectoryViewModel(get()) }
 }

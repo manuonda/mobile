@@ -7,6 +7,7 @@ import androidx.navigation3.runtime.NavEntry
 import androidx.navigation3.ui.NavDisplay
 import com.nirv.converttopdf.ui.capture.CaptureScreen
 import com.nirv.converttopdf.ui.export.ExportScreen
+import com.nirv.converttopdf.ui.files.DirectryFileScreen
 import com.nirv.converttopdf.ui.home.HomeScreen
 import com.nirv.converttopdf.ui.preview.PreviewScreen
 import com.nirv.converttopdf.ui.settings.SettingsScreen
@@ -25,7 +26,7 @@ fun AppNavHost() {
                 is Home -> NavEntry(key = Home) {
                     HomeScreen(
                         onScanNew  = { backStack.add(Capture()) },
-                        onFiles    = { backStack.add(Capture()) },
+                        onFiles    = { backStack.add(DirectoryFiles) },
                         onSettings = { backStack.add(Settings) }
                     )
                 }
@@ -81,6 +82,11 @@ fun AppNavHost() {
                             backStack.clear()
                             backStack.add(Home)
                         }
+                    )
+                }
+                is DirectoryFiles -> NavEntry(key = DirectoryFiles) {
+                    DirectryFileScreen(
+                        onBack = { backStack.removeLastOrNull() }
                     )
                 }
 
