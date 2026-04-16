@@ -1,8 +1,32 @@
 package com.nirv.converttopdf.navigation
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Icon
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.navigation3.runtime.NavEntry
 import androidx.navigation3.ui.NavDisplay
 import com.nirv.converttopdf.ui.capture.CaptureScreen
@@ -13,85 +37,231 @@ import com.nirv.converttopdf.ui.preview.PreviewScreen
 import com.nirv.converttopdf.ui.settings.SettingsScreen
 import com.nirv.converttopdf.ui.signature.DrawSignatureScreen
 import com.nirv.converttopdf.ui.signature.SignatureScreen
+import com.nirv.converttopdf.ui.theme.PlazoMuted
+
+// Tabs that show the bottom navigation bar
+private fun isMainTab(dest: Any?): Boolean =
+    dest is Home || dest is DirectoryFiles || dest is Settings
 
 @Composable
 fun AppNavHost() {
     val backStack = remember { mutableStateListOf<Any>(Home) }
+    val currentDest = backStack.lastOrNull()
 
-    NavDisplay(
-        backStack = backStack,
-        onBack = { backStack.removeLastOrNull() },
-        entryProvider = { key ->
-            when (key) {
-                is Home -> NavEntry(key = Home) {
-                    HomeScreen(
-                        onScanNew  = { backStack.add(Capture()) },
-                        onFiles    = { backStack.add(DirectoryFiles) },
-                        onSettings = { backStack.add(Settings) }
-                    )
-                }
-
-                is Capture -> NavEntry(key = key) {
-                    CaptureScreen(
-                        autoLaunchScanner = key.autoLaunchScanner,
-                        onBack = { backStack.removeLastOrNull() },
-                        onImagesCaptured = {
-                            if (backStack.contains(Preview)) {
-                                backStack.removeLastOrNull()
-                            } else {
-                                backStack.add(Preview)
-                            }
-                        }
-                    )
-                }
-
-                is Preview -> NavEntry(key = Preview) {
-                    PreviewScreen(
-                        onBack    = { backStack.removeLastOrNull() },
-                        onAddMore = { backStack.add(Capture(autoLaunchScanner = true)) },
-                        onSign    = { backStack.add(Sign) }
-                    )
-                }
-
-                // SignatureScreen: documento + overlay arrastrable + sheets
-                is Sign -> NavEntry(key = Sign) {
-                    SignatureScreen(
-                        onBack    = { backStack.removeLastOrNull() },
-                        onDrawNew = { backStack.add(DrawSign) }
-                    )
-                }
-
-                // DrawSignatureScreen: canvas para crear una firma nueva
-                // Al guardar, SignatureViewModel lo ve reactivamente vía SignatureRepository
-                is DrawSign -> NavEntry(key = DrawSign) {
-                    DrawSignatureScreen(
-                        onBack = { backStack.removeLastOrNull() }
-                    )
-                }
-
-                is Settings -> NavEntry(key = Settings) {
-                    SettingsScreen(
-                        onBack = { backStack.removeLastOrNull() }
-                    )
-                }
-
-                is Export -> NavEntry(key = Export) {
-                    ExportScreen(
-                        onBack    = { backStack.removeLastOrNull() },
-                        onNewScan = {
+    Scaffold(
+        contentWindowInsets = WindowInsets(0),   // evita doble inset con los Scaffolds internos
+        bottomBar = {
+            AnimatedVisibility(
+                visible = isMainTab(currentDest),
+                enter   = slideInVertically { it },
+                exit    = slideOutVertically { it }
+            ) {
+                PlazoBottomNav(
+                    currentDest = currentDest,
+                    onHome = {
+                        if (currentDest !is Home) {
                             backStack.clear()
                             backStack.add(Home)
                         }
-                    )
-                }
-                is DirectoryFiles -> NavEntry(key = DirectoryFiles) {
-                    DirectryFileScreen(
-                        onBack = { backStack.removeLastOrNull() }
-                    )
-                }
-
-                else -> NavEntry(key = Unit) {}
+                    },
+                    onFiles = {
+                        if (currentDest !is DirectoryFiles) {
+                            backStack.clear()
+                            backStack.add(Home)
+                            backStack.add(DirectoryFiles)
+                        }
+                    },
+                    onSettings = {
+                        if (currentDest !is Settings) {
+                            backStack.clear()
+                            backStack.add(Home)
+                            backStack.add(Settings)
+                        }
+                    }
+                )
             }
         }
+    ) { paddingValues ->
+        Box(modifier = Modifier.padding(paddingValues)) {
+            NavDisplay(
+                backStack = backStack,
+                onBack    = { backStack.removeLastOrNull() },
+                entryProvider = { key ->
+                    when (key) {
+                        is Home -> NavEntry(key = Home) {
+                            HomeScreen(
+                                onScanNew  = { backStack.add(Capture()) },
+                                onFiles    = {
+                                    backStack.clear()
+                                    backStack.add(Home)
+                                    backStack.add(DirectoryFiles)
+                                },
+                                onSettings = {
+                                    backStack.clear()
+                                    backStack.add(Home)
+                                    backStack.add(Settings)
+                                }
+                            )
+                        }
+
+                        is Capture -> NavEntry(key = key) {
+                            CaptureScreen(
+                                autoLaunchScanner = key.autoLaunchScanner,
+                                onBack = { backStack.removeLastOrNull() },
+                                onImagesCaptured = {
+                                    if (backStack.contains(Preview)) {
+                                        backStack.removeLastOrNull()
+                                    } else {
+                                        backStack.add(Preview)
+                                    }
+                                }
+                            )
+                        }
+
+                        is Preview -> NavEntry(key = Preview) {
+                            PreviewScreen(
+                                onBack    = { backStack.removeLastOrNull() },
+                                onAddMore = { backStack.add(Capture(autoLaunchScanner = true)) },
+                                onSign    = { backStack.add(Sign) }
+                            )
+                        }
+
+                        is Sign -> NavEntry(key = Sign) {
+                            SignatureScreen(
+                                onBack    = { backStack.removeLastOrNull() },
+                                onDrawNew = { backStack.add(DrawSign) }
+                            )
+                        }
+
+                        is DrawSign -> NavEntry(key = DrawSign) {
+                            DrawSignatureScreen(
+                                onBack = { backStack.removeLastOrNull() }
+                            )
+                        }
+
+                        is Settings -> NavEntry(key = Settings) {
+                            SettingsScreen(
+                                onBack = { backStack.removeLastOrNull() }
+                            )
+                        }
+
+                        is Export -> NavEntry(key = Export) {
+                            ExportScreen(
+                                onBack    = { backStack.removeLastOrNull() },
+                                onNewScan = {
+                                    backStack.clear()
+                                    backStack.add(Home)
+                                }
+                            )
+                        }
+
+                        is DirectoryFiles -> NavEntry(key = DirectoryFiles) {
+                            DirectryFileScreen(
+                                onBack = { backStack.removeLastOrNull() }
+                            )
+                        }
+
+                        else -> NavEntry(key = Unit) {}
+                    }
+                }
+            )
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PlazoBottomNav — lime accent selected, minimal divider
+// ─────────────────────────────────────────────────────────────────────────────
+
+private val navItemColors
+    @Composable get() = NavigationBarItemDefaults.colors(
+        selectedIconColor   = MaterialTheme.colorScheme.primary,   // lime
+        selectedTextColor   = MaterialTheme.colorScheme.primary,   // lime
+        unselectedIconColor = PlazoMuted,
+        unselectedTextColor = PlazoMuted,
+        indicatorColor      = Color.Transparent
     )
+
+@Composable
+private fun PlazoBottomNav(
+    currentDest: Any?,
+    onHome: () -> Unit,
+    onFiles: () -> Unit,
+    onSettings: () -> Unit
+) {
+    val isHome     = currentDest is Home
+    val isFiles    = currentDest is DirectoryFiles
+    val isSettings = currentDest is Settings
+
+    Column {
+        HorizontalDivider(
+            color     = MaterialTheme.colorScheme.outline,
+            thickness = 0.5.dp
+        )
+        NavigationBar(
+            containerColor = MaterialTheme.colorScheme.surface,
+            contentColor   = MaterialTheme.colorScheme.onSurface,
+            tonalElevation = 0.dp
+        ) {
+            NavigationBarItem(
+                selected = isHome,
+                onClick  = onHome,
+                icon = {
+                    Icon(
+                        imageVector        = Icons.Default.Home,
+                        contentDescription = "Inicio",
+                        modifier           = Modifier.size(24.dp)
+                    )
+                },
+                label = {
+                    Text(
+                        text       = "Inicio",
+                        fontWeight = if (isHome) FontWeight.SemiBold else FontWeight.Normal
+                    )
+                },
+                alwaysShowLabel = true,
+                colors = navItemColors
+            )
+
+            NavigationBarItem(
+                selected = isFiles,
+                onClick  = onFiles,
+                icon = {
+                    Icon(
+                        imageVector        = Icons.Default.Folder,
+                        contentDescription = "Archivos",
+                        modifier           = Modifier.size(24.dp)
+                    )
+                },
+                label = {
+                    Text(
+                        text       = "Archivos",
+                        fontWeight = if (isFiles) FontWeight.SemiBold else FontWeight.Normal
+                    )
+                },
+                alwaysShowLabel = true,
+                colors = navItemColors
+            )
+
+            NavigationBarItem(
+                selected = isSettings,
+                onClick  = onSettings,
+                icon = {
+                    Icon(
+                        imageVector        = Icons.Default.Settings,
+                        contentDescription = "Ajustes",
+                        modifier           = Modifier.size(24.dp)
+                    )
+                },
+                label = {
+                    Text(
+                        text       = "Ajustes",
+                        fontWeight = if (isSettings) FontWeight.SemiBold else FontWeight.Normal
+                    )
+                },
+                alwaysShowLabel = true,
+                colors = navItemColors
+            )
+        }
+    }
 }

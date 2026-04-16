@@ -190,7 +190,10 @@ fun SignatureScreenContent(
             BottomAppBar {
                 TextButton(
                     onClick  = { showSignatureSheet = true },
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
+                    colors   = androidx.compose.material3.ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.onSurface
+                    )
                 ) {
                     Icon(Icons.Default.Edit, contentDescription = null)
                     Spacer(Modifier.width(4.dp))
@@ -198,7 +201,10 @@ fun SignatureScreenContent(
                 }
                 TextButton(
                     onClick  = { /* próximamente */ },
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
+                    colors   = androidx.compose.material3.ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.onSurface
+                    )
                 ) {
                     Text("Fecha")
                 }
@@ -439,9 +445,9 @@ private fun SignatureOverlay(
                 }
             }
 
-            // ↗↻ — redimensionar Y rotar (esquina inferior-derecha)
-            //   drag horizontal → rota  (izq = antihorario, der = horario)
-            //   drag vertical   → escala proporcionalmente (arriba = encoge, abajo = agranda)
+            // ⤡ — escalar proporcionalmente (esquina inferior-derecha)
+            //   drag hacia abajo/derecha → agranda
+            //   drag hacia arriba/izquierda → encoge
             Box(
                 modifier = Modifier
                     .size(24.dp)
@@ -450,18 +456,15 @@ private fun SignatureOverlay(
                     .background(Color(0xFF00BFA5))
                     .pointerInput(Unit) {
                         detectDragGestures { _, dragAmount ->
-                            // Rotación: componente horizontal, suavizada
-                            latestOnRotate(dragAmount.x / 3f)
-                            // Escala proporcional: componente vertical en dp
-                            val scaleDp = dragAmount.y / density
+                            val scaleDp = (dragAmount.x + dragAmount.y) / 2f / density
                             latestOnResize(scaleDp, scaleDp)
                         }
                     }
             ) {
                 Text(
-                    "↗",
+                    "⤡",
                     color    = Color.White,
-                    fontSize = 12.sp,
+                    fontSize = 11.sp,
                     modifier = Modifier.align(Alignment.Center)
                 )
             }

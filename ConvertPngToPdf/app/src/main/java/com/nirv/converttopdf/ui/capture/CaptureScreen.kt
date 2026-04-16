@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -21,6 +22,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -32,14 +34,11 @@ import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -68,16 +67,6 @@ import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions.SCANNER
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
 import org.koin.androidx.compose.koinViewModel
 
-// ─────────────────────────────────────────────────────────────────────────────
-// CaptureScreen
-//
-// UX rediseñado:
-//   • Grid de galería (3 columnas) — imágenes más recientes primero
-//   • Selección múltiple con checkmark teal en esquina superior derecha
-//   • Icono de cámara en la TopAppBar → lanza el scanner ML Kit
-//   • Botón "Añadir (N)" fijo en la parte inferior, habilitado al seleccionar ≥ 1
-// ─────────────────────────────────────────────────────────────────────────────
-
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
 fun CaptureScreen(
@@ -91,7 +80,6 @@ fun CaptureScreen(
     val selectedUris by viewModel.selectedUris.collectAsStateWithLifecycle()
     val context      = LocalContext.current
 
-    // Permiso de lectura de imágenes (API 33+ usa READ_MEDIA_IMAGES, anterior READ_EXTERNAL_STORAGE)
     val readPermission = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
         android.Manifest.permission.READ_MEDIA_IMAGES
     } else {
@@ -99,21 +87,18 @@ fun CaptureScreen(
     }
     val permissionState = rememberPermissionState(readPermission)
 
-    // Cargar galería cuando el permiso es concedido
     LaunchedEffect(permissionState.status) {
         if (permissionState.status.isGranted) {
             viewModel.loadGalleryImages(context.contentResolver)
         }
     }
 
-    // Solicitar permiso automáticamente al entrar
     LaunchedEffect(Unit) {
         if (!permissionState.status.isGranted) {
             permissionState.launchPermissionRequest()
         }
     }
 
-    // Navegar a Preview cuando la selección es confirmada
     LaunchedEffect(uiState) {
         if (uiState is CaptureUiState.Done) {
             val count = (uiState as CaptureUiState.Done).imageCount
@@ -122,7 +107,6 @@ fun CaptureScreen(
         }
     }
 
-    // Scanner ML Kit
     val scanner = remember {
         GmsDocumentScanning.getClient(
             GmsDocumentScannerOptions.Builder()
@@ -147,7 +131,6 @@ fun CaptureScreen(
         }
     }
 
-    // Lambda extraída para poder usarla tanto en el botón como en el auto-launch
     val launchScanner: () -> Unit = {
         val activity = context as? Activity
         if (activity != null) {
@@ -162,21 +145,16 @@ fun CaptureScreen(
     }
 
     if (autoLaunchScanner) {
-        // ── Modo cámara directa (viene de "Añadir" en PreviewScreen) ─────────
-        // No mostramos la galería. Lanzamos el scanner inmediatamente y
-        // cuando termina (o se cancela) volvemos atrás sin mostrar ninguna UI.
         LaunchedEffect(Unit) { launchScanner() }
-
-        // Pantalla en blanco — el scanner de ML Kit se superpone sobre ella.
-        // Si el usuario cancela el scanner sin escanear nada, onBack() vuelve a Preview.
         Box(
             modifier         = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center
         ) {
-            androidx.compose.material3.CircularProgressIndicator()
+            androidx.compose.material3.CircularProgressIndicator(
+                color = MaterialTheme.colorScheme.primary
+            )
         }
     } else {
-        // ── Modo galería (viene de HomeScreen) ───────────────────────────────
         CaptureScreenContent(
             galleryUris         = galleryUris,
             selectedUris        = selectedUris,
@@ -192,10 +170,9 @@ fun CaptureScreen(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CaptureScreenContent — composable puro
+// CaptureScreenContent — composable puro (Plazo style)
 // ─────────────────────────────────────────────────────────────────────────────
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CaptureScreenContent(
     galleryUris: List<Uri>,
@@ -208,105 +185,101 @@ fun CaptureScreenContent(
     onRequestPermission: () -> Unit,
     onScanClick: () -> Unit
 ) {
-    // Color teal de la app
-    val teal = Color(0xFF00BFA5)
-
     Scaffold(
         topBar = {
-            // ── TopAppBar fondo blanco + iconos teal ─────────────────────────
-            //
-            // TopAppBarDefaults.topAppBarColors() permite sobreescribir
-            // el color de fondo (containerColor) sin afectar el resto del tema.
-            TopAppBar(
-                title = {
-                    Text(
-                        "Seleccionar imágenes",
-                        color = Color(0xFF212121)    // texto oscuro sobre fondo blanco
+            // ── TopBar compacto con título centrado (Plazo style) ─────────────
+            val title = if (selectedUris.isEmpty()) "Seleccionar imágenes"
+                        else "${selectedUris.size} seleccionada${if (selectedUris.size > 1) "s" else ""}"
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surface)
+                    .statusBarsPadding()
+                    .padding(horizontal = 4.dp, vertical = 2.dp)
+            ) {
+                // Izquierda: volver
+                IconButton(
+                    onClick  = onBack,
+                    modifier = Modifier.size(40.dp).align(Alignment.CenterStart)
+                ) {
+                    Icon(
+                        imageVector        = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Volver",
+                        tint               = MaterialTheme.colorScheme.onSurface,
+                        modifier           = Modifier.size(18.dp)
                     )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Volver",
-                            tint = teal
-                        )
-                    }
-                },
-                actions = {
-                    IconButton(onClick = onScanClick) {
-                        Icon(
-                            Icons.Default.CameraAlt,
-                            contentDescription = "Escanear documento",
-                            tint = teal
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.White
+                }
+                // Centro: título
+                Text(
+                    text       = title,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize   = 15.sp,
+                    color      = MaterialTheme.colorScheme.onSurface,
+                    modifier   = Modifier.align(Alignment.Center)
                 )
-            )
+                // Derecha: botón cámara en círculo lila
+                Box(
+                    modifier = Modifier
+                        .padding(end = 8.dp)
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.secondary)
+                        .clickable(onClick = onScanClick)
+                        .align(Alignment.CenterEnd),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector        = Icons.Default.CameraAlt,
+                        contentDescription = "Escanear",
+                        tint               = MaterialTheme.colorScheme.onBackground,
+                        modifier           = Modifier.size(17.dp)
+                    )
+                }
+            }
         },
         bottomBar = {
-            // ── Botón flotante de confirmación ───────────────────────────────
-            //
-            // Visible solo cuando hay imágenes seleccionadas.
-            // Flota 30dp sobre la barra de sistema (navigationBarsPadding).
-            // Fondo blanco con sombra visual (borde sutil) para separarse del grid.
-            // Tamaño generoso: padding vertical 18dp + texto grande (18sp).
             if (selectedUris.isNotEmpty()) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(Color.White)
-                        .padding(
-                            start  = 20.dp,
-                            end    = 20.dp,
-                            top    = 12.dp,
-                            bottom = 30.dp   // 30dp desde el fondo del teléfono
-                        )
-                        .navigationBarsPadding()    // respeta la barra de sistema
+                        .background(MaterialTheme.colorScheme.surface)
+                        .padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 20.dp)
+                        .navigationBarsPadding()
                 ) {
                     Button(
                         onClick  = onConfirm,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(60.dp),          // botón más alto = más fácil de pulsar
-                        colors   = ButtonDefaults.buttonColors(
-                            containerColor = teal
+                            .height(56.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor   = MaterialTheme.colorScheme.onPrimary
                         ),
-                        shape = RoundedCornerShape(14.dp)
+                        shape = RoundedCornerShape(12.dp)   // Plazo: rounded rect, no pill
                     ) {
-                        // Línea principal: cantidad seleccionada
                         Text(
-                            text       = "${selectedUris.size} Seleccionada${if (selectedUris.size > 1) "s" else ""}  ·  Añadir",
-                            fontWeight = FontWeight.Bold,
-                            fontSize   = 18.sp,
-                            color      = Color.White
+                            text       = "Añadir ${selectedUris.size} imagen${if (selectedUris.size > 1) "es" else ""}",
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize   = 16.sp
                         )
                     }
                 }
             }
         }
     ) { padding ->
-
         when {
-            // ── Sin permiso ──────────────────────────────────────────────────
             !permissionGranted -> {
                 PermissionPrompt(
-                    showRationale    = permissionRationale,
+                    showRationale       = permissionRationale,
                     onRequestPermission = onRequestPermission,
-                    modifier         = Modifier
-                        .fillMaxSize()
-                        .padding(padding)
+                    modifier            = Modifier.fillMaxSize().padding(padding)
                 )
             }
 
-            // ── Galería vacía ────────────────────────────────────────────────
             galleryUris.isEmpty() -> {
                 Box(
-                    modifier          = Modifier.fillMaxSize().padding(padding),
-                    contentAlignment  = Alignment.Center
+                    modifier         = Modifier.fillMaxSize().padding(padding),
+                    contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
@@ -316,7 +289,7 @@ fun CaptureScreenContent(
                         )
                         Spacer(Modifier.height(8.dp))
                         Text(
-                            "Usa el icono 📷 para escanear un documento",
+                            "Usa el icono de cámara para escanear un documento",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -324,13 +297,10 @@ fun CaptureScreenContent(
                 }
             }
 
-            // ── Grid de galería ──────────────────────────────────────────────
             else -> {
                 LazyVerticalGrid(
                     columns        = GridCells.Fixed(3),
-                    modifier       = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
+                    modifier       = Modifier.fillMaxSize().padding(padding),
                     contentPadding = PaddingValues(2.dp),
                     verticalArrangement   = Arrangement.spacedBy(2.dp),
                     horizontalArrangement = Arrangement.spacedBy(2.dp)
@@ -349,7 +319,7 @@ fun CaptureScreenContent(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GalleryItem — celda del grid con thumbnail + indicador de selección
+// GalleryItem — thumbnail + indicador de selección lima
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
@@ -358,59 +328,56 @@ private fun GalleryItem(
     isSelected: Boolean,
     onToggle: () -> Unit
 ) {
-    val teal = Color(0xFF00BFA5)
-
     Box(
         modifier = Modifier
             .aspectRatio(1f)
-            .clip(RoundedCornerShape(2.dp))
+            .clip(RoundedCornerShape(4.dp))
             .clickable { onToggle() }
             .then(
-                if (isSelected) Modifier.border(2.dp, teal, RoundedCornerShape(2.dp))
+                if (isSelected)
+                    Modifier.border(2.5.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(4.dp))
                 else Modifier
             )
     ) {
-        // Thumbnail de la imagen cargado con Coil
         AsyncImage(
             model = ImageRequest.Builder(LocalContext.current)
                 .data(uri)
                 .crossfade(true)
-                .size(300)   // tamaño de thumbnail — suficiente para el grid
+                .size(300)
                 .build(),
             contentDescription = null,
             contentScale       = ContentScale.Crop,
             modifier           = Modifier.fillMaxSize()
         )
 
-        // Overlay oscuro cuando está seleccionada
         if (isSelected) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color(0x55000000))
+                    .background(Color(0x33000000))
             )
         }
 
-        // Checkmark en esquina superior derecha
+        // Indicador de selección — lima cuando seleccionado
         Box(
             modifier = Modifier
-                .padding(4.dp)
-                .size(22.dp)
+                .padding(6.dp)
+                .size(24.dp)
                 .align(Alignment.TopEnd)
-                .then(
-                    if (isSelected) Modifier
-                    else Modifier
-                        .clip(CircleShape)
-                        .background(Color(0x66000000))
-                        .border(1.5.dp, Color.White, CircleShape)
+                .clip(CircleShape)
+                .background(
+                    if (isSelected) MaterialTheme.colorScheme.primary
+                    else Color(0x55000000)
                 )
+                .border(width = 1.5.dp, color = Color.White, shape = CircleShape),
+            contentAlignment = Alignment.Center
         ) {
             if (isSelected) {
                 Icon(
-                    Icons.Default.CheckCircle,
+                    imageVector        = Icons.Default.CheckCircle,
                     contentDescription = "Seleccionada",
-                    tint     = teal,
-                    modifier = Modifier.fillMaxSize()
+                    tint               = MaterialTheme.colorScheme.onPrimary,
+                    modifier           = Modifier.size(16.dp)
                 )
             }
         }
@@ -418,7 +385,7 @@ private fun GalleryItem(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PermissionPrompt — pantalla cuando el permiso no está concedido
+// PermissionPrompt
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
@@ -432,13 +399,21 @@ private fun PermissionPrompt(
         horizontalAlignment  = Alignment.CenterHorizontally,
         verticalArrangement  = Arrangement.Center
     ) {
-        Icon(
-            Icons.Default.CameraAlt,
-            contentDescription = null,
-            modifier = Modifier.size(64.dp),
-            tint     = MaterialTheme.colorScheme.primary
-        )
-        Spacer(Modifier.height(20.dp))
+        Box(
+            modifier = Modifier
+                .size(72.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.secondary),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                Icons.Default.CameraAlt,
+                contentDescription = null,
+                modifier = Modifier.size(36.dp),
+                tint     = MaterialTheme.colorScheme.onBackground
+            )
+        }
+        Spacer(Modifier.height(24.dp))
         Text(
             text  = if (showRationale)
                 "Para mostrar tus imágenes necesitamos acceso a la galería. Toca para permitir."
@@ -448,8 +423,15 @@ private fun PermissionPrompt(
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(Modifier.height(24.dp))
-        Button(onClick = onRequestPermission) {
-            Text("Conceder permiso")
+        Button(
+            onClick = onRequestPermission,
+            shape = RoundedCornerShape(12.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor   = MaterialTheme.colorScheme.onPrimary
+            )
+        ) {
+            Text("Conceder permiso", fontWeight = FontWeight.SemiBold)
         }
     }
 }
@@ -459,15 +441,15 @@ private fun PermissionPrompt(
 fun CaptureScreenPreview() {
     MaterialTheme {
         CaptureScreenContent(
-            galleryUris = emptyList(),
-            selectedUris = emptySet(),
-            permissionGranted = true,
+            galleryUris         = emptyList(),
+            selectedUris        = emptySet(),
+            permissionGranted   = true,
             permissionRationale = false,
-            onBack = {},
-            onToggleSelect = {},
-            onConfirm = {},
+            onBack              = {},
+            onToggleSelect      = {},
+            onConfirm           = {},
             onRequestPermission = {},
-            onScanClick = {}
+            onScanClick         = {}
         )
     }
 }

@@ -9,7 +9,7 @@ import kotlinx.coroutines.withContext
 class ExportToPdfUseCase(
     private val pdfExporter: PdfExporter
 ) {
-    suspend operator fun invoke(images: List<Bitmap>): Result<Uri> = withContext(Dispatchers.IO) {
-        pdfExporter.exportToPdf(images)
+    suspend operator fun invoke(images: List<Bitmap>, title: String? = null): Result<Uri> = withContext(Dispatchers.IO) {
+        pdfExporter.exportToPdf(images, title)
     }
 }

@@ -36,13 +36,13 @@ class PreviewViewModel(
         imageRepository.clear()
     }
 
-    fun shareAsPdf() {
+    fun shareAsPdf(title: String? = null) {
         val images = imageRepository.getImages()
         if (images.isEmpty()) return
 
         viewModelScope.launch {
             _shareState.value = ShareState.Loading
-            exportToPdfUseCase(images)
+            exportToPdfUseCase(images, title)
                 .onSuccess { uri -> _shareState.value = ShareState.Ready(uri) }
                 .onFailure { e  -> _shareState.value = ShareState.Error(e.message ?: "Error al generar PDF") }
         }

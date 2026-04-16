@@ -22,12 +22,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
+import androidx.compose.material3.TabRowDefaults
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -98,17 +101,27 @@ fun SignatureBottomSheetContent(
             // Tabs: Firma | Sello
             TabRow(
                 selectedTabIndex = selectedTab,
-                modifier = Modifier.weight(1f),
-                containerColor = Color.Transparent
+                modifier         = Modifier.weight(1f),
+                containerColor   = Color.Transparent,
+                indicator        = { tabPositions ->
+                    TabRowDefaults.SecondaryIndicator(
+                        modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
+                        color    = MaterialTheme.colorScheme.onSurface
+                    )
+                }
             ) {
                 Tab(
-                    selected = selectedTab == 0,
-                    onClick = { onTabSelected(0) },
+                    selected             = selectedTab == 0,
+                    onClick              = { onTabSelected(0) },
+                    selectedContentColor   = MaterialTheme.colorScheme.onSurface,
+                    unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     text = { Text("Firma") }
                 )
                 Tab(
-                    selected = selectedTab == 1,
-                    onClick = { onTabSelected(1) },
+                    selected             = selectedTab == 1,
+                    onClick              = { onTabSelected(1) },
+                    selectedContentColor   = MaterialTheme.colorScheme.onSurface,
+                    unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     text = { Text("Sello") }
                 )
             }
@@ -142,7 +155,7 @@ fun SignatureBottomSheetContent(
                         Icon(
                             Icons.Default.Add,
                             contentDescription = "Añadir firma",
-                            tint = MaterialTheme.colorScheme.primary,
+                            tint = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.size(32.dp)
                         )
                     }
@@ -150,7 +163,7 @@ fun SignatureBottomSheetContent(
                     Text(
                         "Añadir",
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
             }
