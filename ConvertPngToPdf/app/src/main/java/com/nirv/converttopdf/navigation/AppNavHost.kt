@@ -107,22 +107,25 @@ fun AppNavHost() {
                         is Capture -> NavEntry(key = key) {
                             CaptureScreen(
                                 autoLaunchScanner = key.autoLaunchScanner,
-                                onBack = { backStack.removeLastOrNull() },
-                                onImagesCaptured = {
-                                    if (backStack.contains(Preview)) {
-                                        backStack.removeLastOrNull()
-                                    } else {
-                                        backStack.add(Preview)
+                                documentId        = key.documentId,
+                                onBack            = { backStack.removeLastOrNull() },
+                                onDocumentReady   = { docId ->
+                                    // Remove this Capture entry
+                                    backStack.removeLastOrNull()
+                                    // If we were adding to an existing doc, Preview is already in the stack
+                                    if (backStack.none { it is Preview && (it as Preview).documentId == docId }) {
+                                        backStack.add(Preview(docId))
                                     }
                                 }
                             )
                         }
 
-                        is Preview -> NavEntry(key = Preview) {
+                        is Preview -> NavEntry(key = key) {
                             PreviewScreen(
-                                onBack    = { backStack.removeLastOrNull() },
-                                onAddMore = { backStack.add(Capture(autoLaunchScanner = true)) },
-                                onSign    = { backStack.add(Sign) }
+                                documentId = key.documentId,
+                                onBack     = { backStack.removeLastOrNull() },
+                                onAddMore  = { backStack.add(Capture(autoLaunchScanner = true, documentId = key.documentId)) },
+                                onSign     = { backStack.add(Sign) }
                             )
                         }
 

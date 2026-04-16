@@ -32,17 +32,23 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -66,13 +72,17 @@ import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions.RESULT_
 import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions.SCANNER_MODE_FULL
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
 import org.koin.androidx.compose.koinViewModel
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
 fun CaptureScreen(
     onBack: () -> Unit,
-    onImagesCaptured: () -> Unit,
+    onDocumentReady: (documentId: Long) -> Unit,
     autoLaunchScanner: Boolean = false,
+    documentId: Long? = null,              // null = crear nuevo, Long = añadir a existente
     viewModel: CaptureViewModel = koinViewModel()
 ) {
     val uiState      by viewModel.uiState.collectAsStateWithLifecycle()
@@ -80,30 +90,30 @@ fun CaptureScreen(
     val selectedUris by viewModel.selectedUris.collectAsStateWithLifecycle()
     val context      = LocalContext.current
 
-    val readPermission = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-        android.Manifest.permission.READ_MEDIA_IMAGES
-    } else {
-        android.Manifest.permission.READ_EXTERNAL_STORAGE
+    // Estado local del diálogo de nombre
+    var showNameDialog by remember { mutableStateOf(false) }
+    var nameInput      by remember {
+        val defaultName = SimpleDateFormat("yyyyMMdd_HHmm", Locale.getDefault()).format(Date())
+        mutableStateOf("CamScanner_$defaultName")
     }
+
+    val readPermission = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU)
+        android.Manifest.permission.READ_MEDIA_IMAGES
+    else
+        android.Manifest.permission.READ_EXTERNAL_STORAGE
     val permissionState = rememberPermissionState(readPermission)
 
     LaunchedEffect(permissionState.status) {
-        if (permissionState.status.isGranted) {
-            viewModel.loadGalleryImages(context.contentResolver)
-        }
+        if (permissionState.status.isGranted) viewModel.loadGalleryImages(context.contentResolver)
     }
-
     LaunchedEffect(Unit) {
-        if (!permissionState.status.isGranted) {
-            permissionState.launchPermissionRequest()
-        }
+        if (!permissionState.status.isGranted) permissionState.launchPermissionRequest()
     }
-
     LaunchedEffect(uiState) {
         if (uiState is CaptureUiState.Done) {
-            val count = (uiState as CaptureUiState.Done).imageCount
+            val docId = (uiState as CaptureUiState.Done).documentId
             viewModel.resetState()
-            if (count > 0) onImagesCaptured()
+            onDocumentReady(docId)
         }
     }
 
@@ -126,7 +136,13 @@ fun CaptureScreen(
                 ?.pages?.forEach { page ->
                     context.contentResolver.openInputStream(page.imageUri)
                         ?.use { BitmapFactory.decodeStream(it) }
-                        ?.let { viewModel.onBitmapCaptured(it) }
+                        ?.let { bitmap ->
+                            viewModel.onBitmapCaptured(
+                                bitmap     = bitmap,
+                                documentId = documentId,
+                                documentName = nameInput.ifBlank { null }
+                            )
+                        }
                 }
         }
     }
@@ -138,21 +154,51 @@ fun CaptureScreen(
                 .addOnSuccessListener { intentSender ->
                     scannerLauncher.launch(IntentSenderRequest.Builder(intentSender).build())
                 }
-                .addOnFailureListener { e ->
-                    viewModel.onError("Scanner no disponible: ${e.message}")
-                }
+                .addOnFailureListener { e -> viewModel.onError("Scanner no disponible: ${e.message}") }
         }
+    }
+
+    // ── Diálogo: nombre del documento ─────────────────────────────────────────
+    if (showNameDialog) {
+        AlertDialog(
+            onDismissRequest = { showNameDialog = false },
+            title   = { Text("Nombre del documento", fontWeight = FontWeight.Bold) },
+            text    = {
+                OutlinedTextField(
+                    value         = nameInput,
+                    onValueChange = { nameInput = it },
+                    singleLine    = true,
+                    placeholder   = { Text("Ej: Contrato 2026") },
+                    trailingIcon  = {
+                        if (nameInput.isNotEmpty()) {
+                            IconButton(onClick = { nameInput = "" }) {
+                                Icon(Icons.Default.Close, contentDescription = "Borrar")
+                            }
+                        }
+                    }
+                )
+            },
+            dismissButton = {
+                TextButton(onClick = { showNameDialog = false }) { Text("Cancelar") }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showNameDialog = false
+                        viewModel.confirmSelection(
+                            context.contentResolver,
+                            nameInput.trim().ifBlank { "CamScanner_${System.currentTimeMillis()}" }
+                        )
+                    }
+                ) { Text("Crear") }
+            }
+        )
     }
 
     if (autoLaunchScanner) {
         LaunchedEffect(Unit) { launchScanner() }
-        Box(
-            modifier         = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            androidx.compose.material3.CircularProgressIndicator(
-                color = MaterialTheme.colorScheme.primary
-            )
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            androidx.compose.material3.CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
         }
     } else {
         CaptureScreenContent(
@@ -160,9 +206,18 @@ fun CaptureScreen(
             selectedUris        = selectedUris,
             permissionGranted   = permissionState.status.isGranted,
             permissionRationale = permissionState.status.shouldShowRationale,
+            isAddingToExisting  = documentId != null,
             onBack              = onBack,
             onToggleSelect      = { viewModel.toggleSelection(it) },
-            onConfirm           = { viewModel.confirmSelection(context.contentResolver) },
+            onConfirm           = {
+                if (documentId != null) {
+                    // Añadir a documento existente, sin diálogo
+                    viewModel.addToExistingDocument(context.contentResolver, documentId)
+                } else {
+                    // Nuevo documento → mostrar diálogo de nombre
+                    showNameDialog = true
+                }
+            },
             onRequestPermission = { permissionState.launchPermissionRequest() },
             onScanClick         = launchScanner
         )
@@ -170,7 +225,7 @@ fun CaptureScreen(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CaptureScreenContent — composable puro (Plazo style)
+// CaptureScreenContent — composable puro
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
@@ -179,6 +234,7 @@ fun CaptureScreenContent(
     selectedUris: Set<Uri>,
     permissionGranted: Boolean,
     permissionRationale: Boolean,
+    isAddingToExisting: Boolean,
     onBack: () -> Unit,
     onToggleSelect: (Uri) -> Unit,
     onConfirm: () -> Unit,
@@ -187,9 +243,10 @@ fun CaptureScreenContent(
 ) {
     Scaffold(
         topBar = {
-            // ── TopBar compacto con título centrado (Plazo style) ─────────────
-            val title = if (selectedUris.isEmpty()) "Seleccionar imágenes"
-                        else "${selectedUris.size} seleccionada${if (selectedUris.size > 1) "s" else ""}"
+            val title = when {
+                selectedUris.isEmpty() -> "Seleccionar imágenes"
+                else -> "${selectedUris.size} seleccionada${if (selectedUris.size > 1) "s" else ""}"
+            }
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -197,43 +254,22 @@ fun CaptureScreenContent(
                     .statusBarsPadding()
                     .padding(horizontal = 4.dp, vertical = 2.dp)
             ) {
-                // Izquierda: volver
-                IconButton(
-                    onClick  = onBack,
-                    modifier = Modifier.size(40.dp).align(Alignment.CenterStart)
-                ) {
-                    Icon(
-                        imageVector        = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Volver",
-                        tint               = MaterialTheme.colorScheme.onSurface,
-                        modifier           = Modifier.size(18.dp)
-                    )
+                IconButton(onClick = onBack, modifier = Modifier.size(40.dp).align(Alignment.CenterStart)) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver",
+                        tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(18.dp))
                 }
-                // Centro: título
-                Text(
-                    text       = title,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize   = 15.sp,
-                    color      = MaterialTheme.colorScheme.onSurface,
-                    modifier   = Modifier.align(Alignment.Center)
-                )
-                // Derecha: botón cámara en círculo lila
+                Text(text = title, fontWeight = FontWeight.SemiBold, fontSize = 15.sp,
+                    color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.align(Alignment.Center))
                 Box(
                     modifier = Modifier
-                        .padding(end = 8.dp)
-                        .size(34.dp)
-                        .clip(CircleShape)
+                        .padding(end = 8.dp).size(34.dp).clip(CircleShape)
                         .background(MaterialTheme.colorScheme.secondary)
                         .clickable(onClick = onScanClick)
                         .align(Alignment.CenterEnd),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector        = Icons.Default.CameraAlt,
-                        contentDescription = "Escanear",
-                        tint               = MaterialTheme.colorScheme.onBackground,
-                        modifier           = Modifier.size(17.dp)
-                    )
+                    Icon(Icons.Default.CameraAlt, "Escanear",
+                        tint = MaterialTheme.colorScheme.onBackground, modifier = Modifier.size(17.dp))
                 }
             }
         },
@@ -241,77 +277,57 @@ fun CaptureScreenContent(
             if (selectedUris.isNotEmpty()) {
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.surface)
+                        .fillMaxWidth().background(MaterialTheme.colorScheme.surface)
                         .padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 20.dp)
                         .navigationBarsPadding()
                 ) {
+                    val buttonLabel = if (isAddingToExisting)
+                        "Añadir ${selectedUris.size} imagen${if (selectedUris.size > 1) "es" else ""}"
+                    else
+                        "Crear documento (${selectedUris.size})"
                     Button(
                         onClick  = onConfirm,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(56.dp),
-                        colors = ButtonDefaults.buttonColors(
+                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                        colors   = ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.primary,
                             contentColor   = MaterialTheme.colorScheme.onPrimary
                         ),
-                        shape = RoundedCornerShape(12.dp)   // Plazo: rounded rect, no pill
+                        shape = RoundedCornerShape(12.dp)
                     ) {
-                        Text(
-                            text       = "Añadir ${selectedUris.size} imagen${if (selectedUris.size > 1) "es" else ""}",
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize   = 16.sp
-                        )
+                        Text(buttonLabel, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
                     }
                 }
             }
         }
     ) { padding ->
         when {
-            !permissionGranted -> {
-                PermissionPrompt(
-                    showRationale       = permissionRationale,
-                    onRequestPermission = onRequestPermission,
-                    modifier            = Modifier.fillMaxSize().padding(padding)
-                )
-            }
-
-            galleryUris.isEmpty() -> {
-                Box(
-                    modifier         = Modifier.fillMaxSize().padding(padding),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            "No se encontraron imágenes",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            "Usa el icono de cámara para escanear un documento",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+            !permissionGranted -> PermissionPrompt(
+                showRationale = permissionRationale,
+                onRequestPermission = onRequestPermission,
+                modifier = Modifier.fillMaxSize().padding(padding)
+            )
+            galleryUris.isEmpty() -> Box(
+                modifier = Modifier.fillMaxSize().padding(padding),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("No se encontraron imágenes", style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(8.dp))
+                    Text("Usa el icono de cámara para escanear un documento",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-
-            else -> {
-                LazyVerticalGrid(
-                    columns        = GridCells.Fixed(3),
-                    modifier       = Modifier.fillMaxSize().padding(padding),
-                    contentPadding = PaddingValues(2.dp),
-                    verticalArrangement   = Arrangement.spacedBy(2.dp),
-                    horizontalArrangement = Arrangement.spacedBy(2.dp)
-                ) {
-                    items(galleryUris) { uri ->
-                        GalleryItem(
-                            uri        = uri,
-                            isSelected = uri in selectedUris,
-                            onToggle   = { onToggleSelect(uri) }
-                        )
-                    }
+            else -> LazyVerticalGrid(
+                columns = GridCells.Fixed(3),
+                modifier = Modifier.fillMaxSize().padding(padding),
+                contentPadding = PaddingValues(2.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+                horizontalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                items(galleryUris) { uri ->
+                    GalleryItem(uri = uri, isSelected = uri in selectedUris, onToggle = { onToggleSelect(uri) })
                 }
             }
         }
@@ -319,67 +335,29 @@ fun CaptureScreenContent(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GalleryItem — thumbnail + indicador de selección lima
+// GalleryItem
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun GalleryItem(
-    uri: Uri,
-    isSelected: Boolean,
-    onToggle: () -> Unit
-) {
+private fun GalleryItem(uri: Uri, isSelected: Boolean, onToggle: () -> Unit) {
     Box(
         modifier = Modifier
-            .aspectRatio(1f)
-            .clip(RoundedCornerShape(4.dp))
-            .clickable { onToggle() }
-            .then(
-                if (isSelected)
-                    Modifier.border(2.5.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(4.dp))
-                else Modifier
-            )
+            .aspectRatio(1f).clip(RoundedCornerShape(4.dp)).clickable { onToggle() }
+            .then(if (isSelected) Modifier.border(2.5.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(4.dp)) else Modifier)
     ) {
         AsyncImage(
-            model = ImageRequest.Builder(LocalContext.current)
-                .data(uri)
-                .crossfade(true)
-                .size(300)
-                .build(),
-            contentDescription = null,
-            contentScale       = ContentScale.Crop,
-            modifier           = Modifier.fillMaxSize()
+            model = ImageRequest.Builder(LocalContext.current).data(uri).crossfade(true).size(300).build(),
+            contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
         )
-
-        if (isSelected) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color(0x33000000))
-            )
-        }
-
-        // Indicador de selección — lima cuando seleccionado
+        if (isSelected) Box(modifier = Modifier.fillMaxSize().background(Color(0x33000000)))
         Box(
-            modifier = Modifier
-                .padding(6.dp)
-                .size(24.dp)
-                .align(Alignment.TopEnd)
-                .clip(CircleShape)
-                .background(
-                    if (isSelected) MaterialTheme.colorScheme.primary
-                    else Color(0x55000000)
-                )
+            modifier = Modifier.padding(6.dp).size(24.dp).align(Alignment.TopEnd).clip(CircleShape)
+                .background(if (isSelected) MaterialTheme.colorScheme.primary else Color(0x55000000))
                 .border(width = 1.5.dp, color = Color.White, shape = CircleShape),
             contentAlignment = Alignment.Center
         ) {
-            if (isSelected) {
-                Icon(
-                    imageVector        = Icons.Default.CheckCircle,
-                    contentDescription = "Seleccionada",
-                    tint               = MaterialTheme.colorScheme.onPrimary,
-                    modifier           = Modifier.size(16.dp)
-                )
-            }
+            if (isSelected) Icon(Icons.Default.CheckCircle, "Seleccionada",
+                tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(16.dp))
         }
     }
 }
@@ -389,33 +367,19 @@ private fun GalleryItem(
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun PermissionPrompt(
-    showRationale: Boolean,
-    onRequestPermission: () -> Unit,
-    modifier: Modifier = Modifier
-) {
+private fun PermissionPrompt(showRationale: Boolean, onRequestPermission: () -> Unit, modifier: Modifier = Modifier) {
     Column(
-        modifier             = modifier.padding(32.dp),
-        horizontalAlignment  = Alignment.CenterHorizontally,
-        verticalArrangement  = Arrangement.Center
+        modifier = modifier.padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
     ) {
-        Box(
-            modifier = Modifier
-                .size(72.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.secondary),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                Icons.Default.CameraAlt,
-                contentDescription = null,
-                modifier = Modifier.size(36.dp),
-                tint     = MaterialTheme.colorScheme.onBackground
-            )
+        Box(modifier = Modifier.size(72.dp).clip(CircleShape).background(MaterialTheme.colorScheme.secondary),
+            contentAlignment = Alignment.Center) {
+            Icon(Icons.Default.CameraAlt, null, modifier = Modifier.size(36.dp), tint = MaterialTheme.colorScheme.onBackground)
         }
         Spacer(Modifier.height(24.dp))
         Text(
-            text  = if (showRationale)
+            text = if (showRationale)
                 "Para mostrar tus imágenes necesitamos acceso a la galería. Toca para permitir."
             else
                 "Se necesita acceso a la galería para seleccionar imágenes.",
@@ -423,14 +387,9 @@ private fun PermissionPrompt(
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(Modifier.height(24.dp))
-        Button(
-            onClick = onRequestPermission,
-            shape = RoundedCornerShape(12.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor   = MaterialTheme.colorScheme.onPrimary
-            )
-        ) {
+        Button(onClick = onRequestPermission, shape = RoundedCornerShape(12.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary)) {
             Text("Conceder permiso", fontWeight = FontWeight.SemiBold)
         }
     }
@@ -441,15 +400,10 @@ private fun PermissionPrompt(
 fun CaptureScreenPreview() {
     MaterialTheme {
         CaptureScreenContent(
-            galleryUris         = emptyList(),
-            selectedUris        = emptySet(),
-            permissionGranted   = true,
-            permissionRationale = false,
-            onBack              = {},
-            onToggleSelect      = {},
-            onConfirm           = {},
-            onRequestPermission = {},
-            onScanClick         = {}
+            galleryUris = emptyList(), selectedUris = emptySet(),
+            permissionGranted = true, permissionRationale = false,
+            isAddingToExisting = false, onBack = {}, onToggleSelect = {},
+            onConfirm = {}, onRequestPermission = {}, onScanClick = {}
         )
     }
 }

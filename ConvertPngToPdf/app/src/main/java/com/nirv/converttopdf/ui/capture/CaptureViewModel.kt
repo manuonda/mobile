@@ -1,13 +1,12 @@
 package com.nirv.converttopdf.ui.capture
 
 import android.content.ContentResolver
-import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.provider.MediaStore
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.nirv.converttopdf.data.ImageRepository
+import com.nirv.converttopdf.data.repository.DocumentRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -18,32 +17,28 @@ import kotlinx.coroutines.withContext
 sealed class CaptureUiState {
     data object Idle    : CaptureUiState()
     data object Loading : CaptureUiState()
-    data class  Done(val imageCount: Int) : CaptureUiState()
+    data class  Done(val documentId: Long) : CaptureUiState()
     data class  Error(val message: String) : CaptureUiState()
 }
 
 class CaptureViewModel(
-    private val imageRepository: ImageRepository
+    private val documentRepository: DocumentRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<CaptureUiState>(CaptureUiState.Idle)
     val uiState: StateFlow<CaptureUiState> = _uiState.asStateFlow()
 
-    // URIs de la galería del dispositivo cargadas desde MediaStore
     private val _galleryUris = MutableStateFlow<List<Uri>>(emptyList())
     val galleryUris: StateFlow<List<Uri>> = _galleryUris.asStateFlow()
 
-    // URIs seleccionadas por el usuario en el grid
     private val _selectedUris = MutableStateFlow<Set<Uri>>(emptySet())
     val selectedUris: StateFlow<Set<Uri>> = _selectedUris.asStateFlow()
 
-    // Carga las imágenes del dispositivo desde MediaStore en orden descendente (más recientes primero)
     fun loadGalleryImages(contentResolver: ContentResolver) {
         viewModelScope.launch(Dispatchers.IO) {
-            val uris = mutableListOf<Uri>()
+            val uris      = mutableListOf<Uri>()
             val projection = arrayOf(MediaStore.Images.Media._ID)
             val sortOrder  = "${MediaStore.Images.Media.DATE_ADDED} DESC"
-
             contentResolver.query(
                 MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
                 projection, null, null, sortOrder
@@ -51,17 +46,13 @@ class CaptureViewModel(
                 val idCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
                 while (cursor.moveToNext()) {
                     val id  = cursor.getLong(idCol)
-                    val uri = Uri.withAppendedPath(
-                        MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id.toString()
-                    )
-                    uris.add(uri)
+                    uris.add(Uri.withAppendedPath(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id.toString()))
                 }
             }
             _galleryUris.value = uris
         }
     }
 
-    // Alterna la selección de una URI en el grid
     fun toggleSelection(uri: Uri) {
         val current = _selectedUris.value.toMutableSet()
         if (uri in current) current.remove(uri) else current.add(uri)
@@ -72,29 +63,62 @@ class CaptureViewModel(
         _selectedUris.value = emptySet()
     }
 
-    // Confirma la selección: decodifica cada URI seleccionada y la agrega al repositorio
-    fun confirmSelection(contentResolver: ContentResolver) {
+    // ── Crear nuevo documento con nombre ─────────────────────────────────────
+    fun confirmSelection(contentResolver: ContentResolver, documentName: String) {
         val uris = _selectedUris.value.toList()
         if (uris.isEmpty()) return
         _uiState.value = CaptureUiState.Loading
         viewModelScope.launch(Dispatchers.IO) {
-            uris.forEach { uri ->
-                contentResolver.openInputStream(uri)
-                    ?.use { BitmapFactory.decodeStream(it) }
-                    ?.let { imageRepository.addImage(it) }
+            val bitmaps = uris.mapNotNull { uri ->
+                contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
             }
-            val count = imageRepository.getImages().size
+            val docId = documentRepository.createDocument(documentName, bitmaps)
             withContext(Dispatchers.Main) {
                 _selectedUris.value = emptySet()
-                _uiState.value = CaptureUiState.Done(count)
+                _uiState.value = CaptureUiState.Done(docId)
             }
         }
     }
 
-    // Llamado cuando el scanner ML Kit devuelve un bitmap
-    fun onBitmapCaptured(bitmap: Bitmap) {
-        imageRepository.addImage(bitmap)
-        _uiState.value = CaptureUiState.Done(imageRepository.getImages().size)
+    // ── Agregar imágenes a documento existente ────────────────────────────────
+    fun addToExistingDocument(contentResolver: ContentResolver, documentId: Long) {
+        val uris = _selectedUris.value.toList()
+        if (uris.isEmpty()) return
+        _uiState.value = CaptureUiState.Loading
+        viewModelScope.launch(Dispatchers.IO) {
+            val bitmaps = uris.mapNotNull { uri ->
+                contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
+            }
+            documentRepository.addPagesToDocument(documentId, bitmaps)
+            withContext(Dispatchers.Main) {
+                _selectedUris.value = emptySet()
+                _uiState.value = CaptureUiState.Done(documentId)
+            }
+        }
+    }
+
+    // ── Scanner ML Kit → agrega bitmap como nueva página ─────────────────────
+    fun onBitmapCaptured(
+        contentResolver: ContentResolver? = null,
+        bitmap: android.graphics.Bitmap,
+        documentName: String? = null,
+        documentId: Long? = null
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val docId = when {
+                documentId != null -> {
+                    documentRepository.addPagesToDocument(documentId, listOf(bitmap))
+                    documentId
+                }
+                else -> {
+                    val name = documentName ?: "CamScanner_${System.currentTimeMillis()}"
+                    documentRepository.createDocument(name, listOf(bitmap))
+                }
+            }
+            withContext(Dispatchers.Main) {
+                _uiState.value = CaptureUiState.Done(docId)
+            }
+        }
     }
 
     fun onError(message: String) {

@@ -4,6 +4,8 @@ import com.nirv.converttopdf.data.ImageRepository
 import com.nirv.converttopdf.data.PdfExporter
 import com.nirv.converttopdf.data.ReadPdfRepository
 import com.nirv.converttopdf.data.SignatureRepository
+import com.nirv.converttopdf.data.db.AppDatabase
+import com.nirv.converttopdf.data.repository.DocumentRepository
 import com.nirv.converttopdf.domain.usecase.ExportToPdfUseCase
 import com.nirv.converttopdf.ui.capture.CaptureViewModel
 import com.nirv.converttopdf.ui.export.ExportViewModel
@@ -16,21 +18,24 @@ import org.koin.android.ext.koin.androidContext
 import org.koin.core.module.dsl.viewModel
 import org.koin.dsl.module
 
-// Modulo de Koin donde se definen las dependencias
-// de la aplicacion (Repositorios, Casos de Uso y ViewModels)
 val appModule = module {
-    // Singles — una instancia compartida en toda la app
+    // ── Database ──────────────────────────────────────────────────────────────
+    single { AppDatabase.getInstance(androidContext()) }
+    single { get<AppDatabase>().documentDao() }
+    single { DocumentRepository(get(), androidContext()) }
+
+    // ── Singles ───────────────────────────────────────────────────────────────
     single { ImageRepository() }
-    single { SignatureRepository() }          // singleton compartido entre SignatureViewModel y DrawSignatureViewModel
+    single { SignatureRepository() }
     single { PdfExporter(androidContext()) }
     single { ExportToPdfUseCase(get()) }
     single { ReadPdfRepository(get()) }
 
-    // ViewModels
-    viewModel { CaptureViewModel(get()) }
-    viewModel { PreviewViewModel(get(), get()) }
+    // ── ViewModels ────────────────────────────────────────────────────────────
+    viewModel { CaptureViewModel(get()) }                                    // DocumentRepository
+    viewModel { (docId: Long) -> PreviewViewModel(docId, get(), get(), get()) } // docId + DocumentRepository + ImageRepository + ExportToPdfUseCase
     viewModel { ExportViewModel(androidApplication(), get(), get()) }
-    viewModel { SignatureViewModel(get(), get()) }      // ImageRepository + SignatureRepository
+    viewModel { SignatureViewModel(get(), get()) }
     viewModel { DrawSignatureViewModel(get()) }
     viewModel { DirectoryViewModel(get()) }
 }

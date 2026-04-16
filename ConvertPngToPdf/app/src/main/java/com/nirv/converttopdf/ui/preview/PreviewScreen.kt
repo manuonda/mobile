@@ -49,39 +49,40 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nirv.converttopdf.ui.theme.PlazoMuted
 import org.koin.androidx.compose.koinViewModel
+import org.koin.core.parameter.parametersOf
 
 @Composable
 fun PreviewScreen(
+    documentId: Long,
     onBack: () -> Unit,
     onAddMore: () -> Unit,
     onSign: () -> Unit,
-    viewModel: PreviewViewModel = koinViewModel()
+    viewModel: PreviewViewModel = koinViewModel(parameters = { parametersOf(documentId) })
 ) {
-    val images     by viewModel.images.collectAsStateWithLifecycle()
-    val shareState by viewModel.shareState.collectAsStateWithLifecycle()
-    var documentTitle by remember { mutableStateOf("") }
+    val images       by viewModel.images.collectAsStateWithLifecycle()
+    val shareState   by viewModel.shareState.collectAsStateWithLifecycle()
+    val documentName by viewModel.documentName.collectAsStateWithLifecycle()
 
     PreviewScreenContent(
-        images            = images,
-        shareState        = shareState,
-        documentTitle     = documentTitle,
-        onBack            = onBack,
-        onAddMore         = onAddMore,
-        onSign            = onSign,
-        onDeleteImage     = { viewModel.removeImage(it) },
-        onClearAll        = { viewModel.clearAll() },
-        onShare           = { viewModel.shareAsPdf(documentTitle.ifBlank { null }) },
+        images        = images,
+        shareState    = shareState,
+        documentTitle = documentName,
+        onBack        = onBack,
+        onAddMore     = onAddMore,
+        onSign        = onSign,
+        onDeleteImage = { viewModel.removeImage(it) },
+        onShare       = { viewModel.shareAsPdf() },
         onResetShareState = { viewModel.resetShareState() },
-        onTitleChange     = { documentTitle = it }
+        onTitleChange = { viewModel.renameDocument(it) }
     )
 }
 
@@ -94,7 +95,6 @@ fun PreviewScreenContent(
     onAddMore: () -> Unit,
     onSign: () -> Unit,
     onDeleteImage: (Int) -> Unit,
-    onClearAll: () -> Unit,
     onShare: () -> Unit,
     onResetShareState: () -> Unit,
     onTitleChange: (String) -> Unit
@@ -136,26 +136,19 @@ fun PreviewScreenContent(
                 )
             },
             dismissButton = {
-                TextButton(onClick = { showRenameDialog = false }) {
-                    Text("Cancelar")
-                }
+                TextButton(onClick = { showRenameDialog = false }) { Text("Cancelar") }
             },
             confirmButton = {
-                TextButton(
-                    onClick = {
-                        onTitleChange(renameInput.trim())
-                        showRenameDialog = false
-                    }
-                ) {
-                    Text("Aceptar")
-                }
+                TextButton(onClick = {
+                    onTitleChange(renameInput.trim())
+                    showRenameDialog = false
+                }) { Text("Aceptar") }
             }
         )
     }
 
     Scaffold(
         topBar = {
-            // ── TopBar con título editable (Plazo style) ──────────────────────
             val displayTitle = documentTitle.ifBlank {
                 if (images.isEmpty()) "Previsualizar" else "Imágenes (${images.size})"
             }
@@ -167,62 +160,45 @@ fun PreviewScreenContent(
                     .padding(horizontal = 4.dp, vertical = 2.dp)
             ) {
                 IconButton(onClick = onBack, modifier = Modifier.size(40.dp).align(Alignment.CenterStart)) {
-                    Icon(
-                        imageVector        = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Volver",
-                        tint               = MaterialTheme.colorScheme.onSurface,
-                        modifier           = Modifier.size(18.dp)
-                    )
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver",
+                        tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(18.dp))
                 }
                 // Título + lápiz centrados
                 Row(
-                    modifier          = Modifier.align(Alignment.Center),
+                    modifier = Modifier.align(Alignment.Center),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text       = displayTitle,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize   = 15.sp,
-                        color      = MaterialTheme.colorScheme.onSurface,
-                        maxLines   = 1
+                        text = displayTitle, fontWeight = FontWeight.SemiBold,
+                        fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurface, maxLines = 1
                     )
                     if (images.isNotEmpty()) {
                         IconButton(
-                            onClick  = {
-                                renameInput = documentTitle
-                                showRenameDialog = true
-                            },
+                            onClick  = { renameInput = documentTitle; showRenameDialog = true },
                             modifier = Modifier.size(32.dp)
                         ) {
-                            Icon(
-                                imageVector        = Icons.Default.Create,
-                                contentDescription = "Renombrar",
-                                tint               = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier           = Modifier.size(16.dp)
-                            )
+                            Icon(Icons.Default.Create, "Renombrar",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(16.dp))
                         }
                     }
                 }
+                // Icono delete (eliminar todas) — derecha
                 if (images.isNotEmpty()) {
-                    IconButton(onClick = onClearAll, modifier = Modifier.size(40.dp).align(Alignment.CenterEnd)) {
-                        Icon(
-                            imageVector        = Icons.Default.Delete,
-                            contentDescription = "Eliminar todas",
-                            tint               = MaterialTheme.colorScheme.error,
-                            modifier           = Modifier.size(18.dp)
-                        )
+                    IconButton(
+                        onClick  = { images.indices.reversed().forEach { onDeleteImage(it) } },
+                        modifier = Modifier.size(40.dp).align(Alignment.CenterEnd)
+                    ) {
+                        Icon(Icons.Default.Delete, "Eliminar todas",
+                            tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
                     }
                 }
             }
         },
         bottomBar = {
             if (images.isNotEmpty()) {
-                // ── Barra de acciones estilo CamScanner ──────────────────────
                 Column {
-                    HorizontalDivider(
-                        color     = MaterialTheme.colorScheme.outline,
-                        thickness = 0.5.dp
-                    )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline, thickness = 0.5.dp)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -232,32 +208,21 @@ fun PreviewScreenContent(
                         horizontalArrangement = Arrangement.SpaceEvenly,
                         verticalAlignment     = Alignment.CenterVertically
                     ) {
-                        // Añadir
                         BottomBarAction(
-                            icon     = Icons.Default.AddAPhoto,
-                            label    = "Añadir",
-                            tint     = MaterialTheme.colorScheme.onSurface,
-                            onClick  = onAddMore,
-                            modifier = Modifier.weight(1f)
+                            icon = Icons.Default.AddAPhoto, label = "Añadir",
+                            tint = MaterialTheme.colorScheme.onSurface,
+                            onClick = onAddMore, modifier = Modifier.weight(1f)
                         )
-
-                        // Compartir PDF
                         BottomBarAction(
-                            icon     = Icons.Default.Share,
-                            label    = "Compartir",
-                            tint     = MaterialTheme.colorScheme.primary,
-                            onClick  = onShare,
-                            modifier = Modifier.weight(1f),
-                            loading  = shareState is ShareState.Loading
+                            icon = Icons.Default.Share, label = "Compartir",
+                            tint = MaterialTheme.colorScheme.primary,
+                            onClick = onShare, modifier = Modifier.weight(1f),
+                            loading = shareState is ShareState.Loading
                         )
-
-                        // Firmar
                         BottomBarAction(
-                            icon     = Icons.Default.Create,
-                            label    = "Firmar",
-                            tint     = MaterialTheme.colorScheme.onSurface,
-                            onClick  = onSign,
-                            modifier = Modifier.weight(1f)
+                            icon = Icons.Default.Create, label = "Firmar",
+                            tint = MaterialTheme.colorScheme.onSurface,
+                            onClick = onSign, modifier = Modifier.weight(1f)
                         )
                     }
                 }
@@ -265,58 +230,33 @@ fun PreviewScreenContent(
         }
     ) { padding ->
         if (images.isEmpty()) {
-            Box(
-                modifier         = Modifier.fillMaxSize().padding(padding),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier            = Modifier.padding(24.dp)
-                ) {
+            Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(24.dp)) {
                     Box(
-                        modifier = Modifier
-                            .size(72.dp)
-                            .clip(CircleShape)
+                        modifier = Modifier.size(72.dp).clip(CircleShape)
                             .background(MaterialTheme.colorScheme.secondary),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            Icons.Default.AddAPhoto,
-                            contentDescription = null,
-                            modifier           = Modifier.size(32.dp),
-                            tint               = MaterialTheme.colorScheme.onBackground
-                        )
+                        Icon(Icons.Default.AddAPhoto, null,
+                            modifier = Modifier.size(32.dp),
+                            tint = MaterialTheme.colorScheme.onBackground)
                     }
                     Spacer(Modifier.height(16.dp))
-                    Text(
-                        "No hay imágenes",
-                        style      = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color      = MaterialTheme.colorScheme.onBackground
-                    )
+                    Text("No hay imágenes", style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onBackground)
                     Spacer(Modifier.height(6.dp))
-                    Text(
-                        "Usa Añadir para escanear o seleccionar imágenes",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = PlazoMuted
-                    )
+                    Text("Usa Añadir para escanear o seleccionar imágenes",
+                        style = MaterialTheme.typography.bodyMedium, color = PlazoMuted)
                 }
             }
         } else {
             LazyColumn(
-                modifier            = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .padding(horizontal = 16.dp),
+                modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 item { Spacer(Modifier.height(6.dp)) }
                 itemsIndexed(images) { index, bitmap ->
-                    ImageCard(
-                        index    = index,
-                        bitmap   = bitmap,
-                        onDelete = { onDeleteImage(index) }
-                    )
+                    ImageCard(index = index, bitmap = bitmap, onDelete = { onDeleteImage(index) })
                 }
                 item { Spacer(Modifier.height(16.dp)) }
             }
@@ -330,125 +270,62 @@ fun PreviewScreenContent(
 
 @Composable
 private fun BottomBarAction(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     label: String,
     tint: Color,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     loading: Boolean = false
 ) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = modifier
-    ) {
-        IconButton(
-            onClick  = onClick,
-            enabled  = !loading,
-            modifier = Modifier.size(48.dp)
-        ) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = modifier) {
+        IconButton(onClick = onClick, enabled = !loading, modifier = Modifier.size(48.dp)) {
             if (loading) {
-                CircularProgressIndicator(
-                    modifier    = Modifier.size(26.dp),
-                    strokeWidth = 2.dp,
-                    color       = tint
-                )
+                CircularProgressIndicator(modifier = Modifier.size(26.dp), strokeWidth = 2.dp, color = tint)
             } else {
-                Icon(
-                    imageVector        = icon,
-                    contentDescription = label,
-                    tint               = tint,
-                    modifier           = Modifier.size(26.dp)
-                )
+                Icon(imageVector = icon, contentDescription = label, tint = tint, modifier = Modifier.size(26.dp))
             }
         }
-        Text(
-            text       = label,
-            fontSize   = 11.sp,
-            fontWeight = FontWeight.Medium,
-            color      = tint,
-            maxLines   = 1
-        )
+        Text(text = label, fontSize = 11.sp, fontWeight = FontWeight.Medium, color = tint, maxLines = 1)
     }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ImageCard — imagen con badge numérico + botón cerrar (Plazo style)
+// ImageCard — thumbnail con badge numérico + botón eliminar
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun ImageCard(
-    index: Int,
-    bitmap: Bitmap,
-    onDelete: () -> Unit
-) {
+private fun ImageCard(index: Int, bitmap: Bitmap, onDelete: () -> Unit) {
     Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
             .background(MaterialTheme.colorScheme.surface)
     ) {
         Image(
-            bitmap             = bitmap.asImageBitmap(),
-            contentDescription = "Imagen ${index + 1}",
-            modifier           = Modifier
-                .fillMaxWidth()
+            bitmap = bitmap.asImageBitmap(), contentDescription = "Imagen ${index + 1}",
+            modifier = Modifier.fillMaxWidth()
                 .aspectRatio(bitmap.width.toFloat() / bitmap.height.toFloat())
                 .clip(RoundedCornerShape(16.dp)),
-            contentScale       = ContentScale.Crop
+            contentScale = ContentScale.Crop
         )
-
-        // Badge número — esquina superior izquierda
+        // Badge número
         Box(
-            modifier = Modifier
-                .padding(8.dp)
-                .size(26.dp)
+            modifier = Modifier.padding(8.dp).size(26.dp)
                 .background(MaterialTheme.colorScheme.primary, CircleShape)
                 .align(Alignment.TopStart),
             contentAlignment = Alignment.Center
         ) {
-            Text(
-                text       = "${index + 1}",
-                color      = MaterialTheme.colorScheme.onPrimary,
-                fontSize   = 11.sp,
-                fontWeight = FontWeight.Bold
-            )
+            Text("${index + 1}", color = MaterialTheme.colorScheme.onPrimary,
+                fontSize = 11.sp, fontWeight = FontWeight.Bold)
         }
-
-        // Botón cerrar — esquina superior derecha
+        // Botón cerrar
         Box(
-            modifier = Modifier
-                .padding(6.dp)
-                .size(28.dp)
+            modifier = Modifier.padding(6.dp).size(28.dp)
                 .background(Color.Black.copy(alpha = 0.45f), CircleShape)
                 .align(Alignment.TopEnd),
             contentAlignment = Alignment.Center
         ) {
             IconButton(onClick = onDelete, modifier = Modifier.size(28.dp)) {
-                Icon(
-                    Icons.Default.Close,
-                    contentDescription = "Eliminar",
-                    tint               = Color.White,
-                    modifier           = Modifier.size(16.dp)
-                )
+                Icon(Icons.Default.Close, "Eliminar", tint = Color.White, modifier = Modifier.size(16.dp))
             }
         }
     }
-}
-
-@Preview(showBackground = true)
-@Composable
-fun PreviewScreenPreview() {
-    PreviewScreenContent(
-        images            = emptyList(),
-        shareState        = ShareState.Idle,
-        documentTitle     = "",
-        onBack            = {},
-        onAddMore         = {},
-        onSign            = {},
-        onDeleteImage     = {},
-        onClearAll        = {},
-        onShare           = {},
-        onResetShareState = {},
-        onTitleChange     = {}
-    )
 }
