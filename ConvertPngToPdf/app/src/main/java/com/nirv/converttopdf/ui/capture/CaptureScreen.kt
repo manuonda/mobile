@@ -9,7 +9,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,6 +19,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -71,6 +72,7 @@ import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
 import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions.RESULT_FORMAT_JPEG
 import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions.SCANNER_MODE_FULL
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
+import com.nirv.converttopdf.ui.theme.PlazoMuted
 import org.koin.androidx.compose.koinViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -82,15 +84,20 @@ fun CaptureScreen(
     onBack: () -> Unit,
     onDocumentReady: (documentId: Long) -> Unit,
     autoLaunchScanner: Boolean = false,
-    documentId: Long? = null,              // null = crear nuevo, Long = añadir a existente
+    documentId: Long? = null,
     viewModel: CaptureViewModel = koinViewModel()
 ) {
-    val uiState      by viewModel.uiState.collectAsStateWithLifecycle()
-    val galleryUris  by viewModel.galleryUris.collectAsStateWithLifecycle()
-    val selectedUris by viewModel.selectedUris.collectAsStateWithLifecycle()
-    val context      = LocalContext.current
+    val uiState          by viewModel.uiState.collectAsStateWithLifecycle()
+    val galleryUris      by viewModel.galleryUris.collectAsStateWithLifecycle()
+    val selectedUris     by viewModel.selectedUris.collectAsStateWithLifecycle()
+    // val isGalleryLoading by viewModel.isGalleryLoading.collectAsStateWithLifecycle() 
+    val context          = LocalContext.current
 
-    // Estado local del diálogo de nombre
+    LaunchedEffect(Unit) {
+        viewModel.clearSelection()
+        viewModel.resetState()
+    }
+
     var showNameDialog by remember { mutableStateOf(false) }
     var nameInput      by remember {
         val defaultName = SimpleDateFormat("yyyyMMdd_HHmm", Locale.getDefault()).format(Date())
@@ -103,12 +110,12 @@ fun CaptureScreen(
         android.Manifest.permission.READ_EXTERNAL_STORAGE
     val permissionState = rememberPermissionState(readPermission)
 
-    LaunchedEffect(permissionState.status) {
-        if (permissionState.status.isGranted) viewModel.loadGalleryImages(context.contentResolver)
+    LaunchedEffect(permissionState.status.isGranted) {
+        if (permissionState.status.isGranted) {
+            viewModel.loadGalleryImages(context.contentResolver)
+        }
     }
-    LaunchedEffect(Unit) {
-        if (!permissionState.status.isGranted) permissionState.launchPermissionRequest()
-    }
+
     LaunchedEffect(uiState) {
         if (uiState is CaptureUiState.Done) {
             val docId = (uiState as CaptureUiState.Done).documentId
@@ -158,7 +165,6 @@ fun CaptureScreen(
         }
     }
 
-    // ── Diálogo: nombre del documento ─────────────────────────────────────────
     if (showNameDialog) {
         AlertDialog(
             onDismissRequest = { showNameDialog = false },
@@ -198,12 +204,13 @@ fun CaptureScreen(
     if (autoLaunchScanner) {
         LaunchedEffect(Unit) { launchScanner() }
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            androidx.compose.material3.CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
         }
     } else {
         CaptureScreenContent(
             galleryUris         = galleryUris,
             selectedUris        = selectedUris,
+            isGalleryLoading    = galleryUris.isEmpty() && permissionState.status.isGranted, 
             permissionGranted   = permissionState.status.isGranted,
             permissionRationale = permissionState.status.shouldShowRationale,
             isAddingToExisting  = documentId != null,
@@ -211,10 +218,8 @@ fun CaptureScreen(
             onToggleSelect      = { viewModel.toggleSelection(it) },
             onConfirm           = {
                 if (documentId != null) {
-                    // Añadir a documento existente, sin diálogo
                     viewModel.addToExistingDocument(context.contentResolver, documentId)
                 } else {
-                    // Nuevo documento → mostrar diálogo de nombre
                     showNameDialog = true
                 }
             },
@@ -224,14 +229,11 @@ fun CaptureScreen(
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// CaptureScreenContent — composable puro
-// ─────────────────────────────────────────────────────────────────────────────
-
 @Composable
 fun CaptureScreenContent(
     galleryUris: List<Uri>,
     selectedUris: Set<Uri>,
+    isGalleryLoading: Boolean,
     permissionGranted: Boolean,
     permissionRationale: Boolean,
     isAddingToExisting: Boolean,
@@ -243,10 +245,9 @@ fun CaptureScreenContent(
 ) {
     Scaffold(
         topBar = {
-            val title = when {
-                selectedUris.isEmpty() -> "Seleccionar imágenes"
-                else -> "${selectedUris.size} seleccionada${if (selectedUris.size > 1) "s" else ""}"
-            }
+            val title = if (selectedUris.isEmpty()) "Seleccionar imágenes" 
+                        else "${selectedUris.size} seleccionada${if (selectedUris.size > 1) "s" else ""}"
+            
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -260,6 +261,7 @@ fun CaptureScreenContent(
                 }
                 Text(text = title, fontWeight = FontWeight.SemiBold, fontSize = 15.sp,
                     color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.align(Alignment.Center))
+                
                 Box(
                     modifier = Modifier
                         .padding(end = 8.dp).size(34.dp).clip(CircleShape)
@@ -281,42 +283,33 @@ fun CaptureScreenContent(
                         .padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 20.dp)
                         .navigationBarsPadding()
                 ) {
-                    val buttonLabel = if (isAddingToExisting)
-                        "Añadir ${selectedUris.size} imagen${if (selectedUris.size > 1) "es" else ""}"
-                    else
-                        "Crear documento (${selectedUris.size})"
+                    val label = if (isAddingToExisting) "Añadir a documento" else "Siguiente (${selectedUris.size})"
                     Button(
                         onClick  = onConfirm,
                         modifier = Modifier.fillMaxWidth().height(56.dp),
-                        colors   = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary,
-                            contentColor   = MaterialTheme.colorScheme.onPrimary
-                        ),
-                        shape = RoundedCornerShape(12.dp)
+                        colors   = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                        shape    = RoundedCornerShape(12.dp)
                     ) {
-                        Text(buttonLabel, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+                        Text(label, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                     }
                 }
             }
         }
     ) { padding ->
         when {
-            !permissionGranted -> PermissionPrompt(
-                showRationale = permissionRationale,
-                onRequestPermission = onRequestPermission,
-                modifier = Modifier.fillMaxSize().padding(padding)
-            )
-            galleryUris.isEmpty() -> Box(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                contentAlignment = Alignment.Center
-            ) {
+            !permissionGranted -> PermissionPrompt(permissionRationale, onRequestPermission, Modifier.fillMaxSize().padding(padding))
+            
+            isGalleryLoading -> {
+                Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(strokeWidth = 3.dp)
+                }
+            }
+
+            galleryUris.isEmpty() -> Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("No se encontraron imágenes", style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("No se encontraron imágenes", style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.height(8.dp))
-                    Text("Usa el icono de cámara para escanear un documento",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Usa el icono de cámara para escanear", style = MaterialTheme.typography.bodyMedium, color = PlazoMuted)
                 }
             }
             else -> LazyVerticalGrid(
@@ -327,71 +320,37 @@ fun CaptureScreenContent(
                 horizontalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 items(galleryUris) { uri ->
-                    GalleryItem(uri = uri, isSelected = uri in selectedUris, onToggle = { onToggleSelect(uri) })
+                    GalleryItem(uri, uri in selectedUris) { onToggleSelect(uri) }
                 }
             }
         }
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// GalleryItem
-// ─────────────────────────────────────────────────────────────────────────────
-
 @Composable
 private fun GalleryItem(uri: Uri, isSelected: Boolean, onToggle: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .aspectRatio(1f).clip(RoundedCornerShape(4.dp)).clickable { onToggle() }
-            .then(if (isSelected) Modifier.border(2.5.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(4.dp)) else Modifier)
-    ) {
+    Box(modifier = Modifier.aspectRatio(1f).clip(RoundedCornerShape(4.dp)).clickable { onToggle() }) {
         AsyncImage(
             model = ImageRequest.Builder(LocalContext.current).data(uri).crossfade(true).size(300).build(),
             contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
         )
-        if (isSelected) Box(modifier = Modifier.fillMaxSize().background(Color(0x33000000)))
-        Box(
-            modifier = Modifier.padding(6.dp).size(24.dp).align(Alignment.TopEnd).clip(CircleShape)
-                .background(if (isSelected) MaterialTheme.colorScheme.primary else Color(0x55000000))
-                .border(width = 1.5.dp, color = Color.White, shape = CircleShape),
-            contentAlignment = Alignment.Center
-        ) {
-            if (isSelected) Icon(Icons.Default.CheckCircle, "Seleccionada",
-                tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(16.dp))
+        if (isSelected) {
+            Box(modifier = Modifier.fillMaxSize().background(Color(0x66000000)))
+            Icon(Icons.Default.CheckCircle, null, tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(6.dp).size(24.dp).align(Alignment.TopEnd).background(Color.White, CircleShape))
         }
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// PermissionPrompt
-// ─────────────────────────────────────────────────────────────────────────────
-
 @Composable
-private fun PermissionPrompt(showRationale: Boolean, onRequestPermission: () -> Unit, modifier: Modifier = Modifier) {
-    Column(
-        modifier = modifier.padding(32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Box(modifier = Modifier.size(72.dp).clip(CircleShape).background(MaterialTheme.colorScheme.secondary),
-            contentAlignment = Alignment.Center) {
-            Icon(Icons.Default.CameraAlt, null, modifier = Modifier.size(36.dp), tint = MaterialTheme.colorScheme.onBackground)
-        }
+private fun PermissionPrompt(showRationale: Boolean, onRequestPermission: () -> Unit, modifier: Modifier) {
+    Column(modifier = modifier.padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+        Icon(Icons.Default.CameraAlt, null, modifier = Modifier.size(64.dp), tint = PlazoMuted)
         Spacer(Modifier.height(24.dp))
-        Text(
-            text = if (showRationale)
-                "Para mostrar tus imágenes necesitamos acceso a la galería. Toca para permitir."
-            else
-                "Se necesita acceso a la galería para seleccionar imágenes.",
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        Text(text = if (showRationale) "Necesitamos acceso a tus fotos." else "Permite el acceso a la galería.",
+            style = MaterialTheme.typography.bodyLarge, color = PlazoMuted)
         Spacer(Modifier.height(24.dp))
-        Button(onClick = onRequestPermission, shape = RoundedCornerShape(12.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary)) {
-            Text("Conceder permiso", fontWeight = FontWeight.SemiBold)
-        }
+        Button(onClick = onRequestPermission) { Text("Conceder permiso") }
     }
 }
 
@@ -399,11 +358,6 @@ private fun PermissionPrompt(showRationale: Boolean, onRequestPermission: () -> 
 @Composable
 fun CaptureScreenPreview() {
     MaterialTheme {
-        CaptureScreenContent(
-            galleryUris = emptyList(), selectedUris = emptySet(),
-            permissionGranted = true, permissionRationale = false,
-            isAddingToExisting = false, onBack = {}, onToggleSelect = {},
-            onConfirm = {}, onRequestPermission = {}, onScanClick = {}
-        )
+        CaptureScreenContent(emptyList(), emptySet(), false, true, false, false, {}, {}, {}, {}, {})
     }
 }

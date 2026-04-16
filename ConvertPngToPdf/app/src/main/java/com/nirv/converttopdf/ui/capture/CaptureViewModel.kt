@@ -34,22 +34,38 @@ class CaptureViewModel(
     private val _selectedUris = MutableStateFlow<Set<Uri>>(emptySet())
     val selectedUris: StateFlow<Set<Uri>> = _selectedUris.asStateFlow()
 
+    private val _isGalleryLoading = MutableStateFlow(false)
+    val isGalleryLoading: StateFlow<Boolean> = _isGalleryLoading.asStateFlow()
+
     fun loadGalleryImages(contentResolver: ContentResolver) {
+        if (_isGalleryLoading.value) return
+        
         viewModelScope.launch(Dispatchers.IO) {
-            val uris      = mutableListOf<Uri>()
+            _isGalleryLoading.value = true
+            val uris = mutableListOf<Uri>()
             val projection = arrayOf(MediaStore.Images.Media._ID)
-            val sortOrder  = "${MediaStore.Images.Media.DATE_ADDED} DESC"
-            contentResolver.query(
-                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                projection, null, null, sortOrder
-            )?.use { cursor ->
-                val idCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
-                while (cursor.moveToNext()) {
-                    val id  = cursor.getLong(idCol)
-                    uris.add(Uri.withAppendedPath(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id.toString()))
+            val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
+            
+            try {
+                contentResolver.query(
+                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                    projection, 
+                    null, 
+                    null, 
+                    sortOrder
+                )?.use { cursor ->
+                    val idCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
+                    while (cursor.moveToNext() && uris.size < 100) {
+                        val id = cursor.getLong(idCol)
+                        uris.add(Uri.withAppendedPath(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id.toString()))
+                    }
                 }
+                _galleryUris.value = uris
+            } catch (e: Exception) {
+                _uiState.value = CaptureUiState.Error("Error al cargar galería: ${e.message}")
+            } finally {
+                _isGalleryLoading.value = false
             }
-            _galleryUris.value = uris
         }
     }
 
@@ -63,7 +79,6 @@ class CaptureViewModel(
         _selectedUris.value = emptySet()
     }
 
-    // ── Crear nuevo documento con nombre ─────────────────────────────────────
     fun confirmSelection(contentResolver: ContentResolver, documentName: String) {
         val uris = _selectedUris.value.toList()
         if (uris.isEmpty()) return
@@ -80,7 +95,6 @@ class CaptureViewModel(
         }
     }
 
-    // ── Agregar imágenes a documento existente ────────────────────────────────
     fun addToExistingDocument(contentResolver: ContentResolver, documentId: Long) {
         val uris = _selectedUris.value.toList()
         if (uris.isEmpty()) return
@@ -97,13 +111,12 @@ class CaptureViewModel(
         }
     }
 
-    // ── Scanner ML Kit → agrega bitmap como nueva página ─────────────────────
     fun onBitmapCaptured(
-        contentResolver: ContentResolver? = null,
         bitmap: android.graphics.Bitmap,
         documentName: String? = null,
         documentId: Long? = null
     ) {
+        _uiState.value = CaptureUiState.Loading
         viewModelScope.launch(Dispatchers.IO) {
             val docId = when {
                 documentId != null -> {
