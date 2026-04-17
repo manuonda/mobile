@@ -7,13 +7,11 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -32,24 +30,18 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -90,18 +82,11 @@ fun CaptureScreen(
     val uiState          by viewModel.uiState.collectAsStateWithLifecycle()
     val galleryUris      by viewModel.galleryUris.collectAsStateWithLifecycle()
     val selectedUris     by viewModel.selectedUris.collectAsStateWithLifecycle()
-    // val isGalleryLoading by viewModel.isGalleryLoading.collectAsStateWithLifecycle() 
     val context          = LocalContext.current
 
     LaunchedEffect(Unit) {
         viewModel.clearSelection()
         viewModel.resetState()
-    }
-
-    var showNameDialog by remember { mutableStateOf(false) }
-    var nameInput      by remember {
-        val defaultName = SimpleDateFormat("yyyyMMdd_HHmm", Locale.getDefault()).format(Date())
-        mutableStateOf("CamScanner_$defaultName")
     }
 
     val readPermission = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU)
@@ -147,7 +132,7 @@ fun CaptureScreen(
                             viewModel.onBitmapCaptured(
                                 bitmap     = bitmap,
                                 documentId = documentId,
-                                documentName = nameInput.ifBlank { null }
+                                documentName = null // El ViewModel o el flujo directo asignarán el nombre
                             )
                         }
                 }
@@ -163,42 +148,6 @@ fun CaptureScreen(
                 }
                 .addOnFailureListener { e -> viewModel.onError("Scanner no disponible: ${e.message}") }
         }
-    }
-
-    if (showNameDialog) {
-        AlertDialog(
-            onDismissRequest = { showNameDialog = false },
-            title   = { Text("Nombre del documento", fontWeight = FontWeight.Bold) },
-            text    = {
-                OutlinedTextField(
-                    value         = nameInput,
-                    onValueChange = { nameInput = it },
-                    singleLine    = true,
-                    placeholder   = { Text("Ej: Contrato 2026") },
-                    trailingIcon  = {
-                        if (nameInput.isNotEmpty()) {
-                            IconButton(onClick = { nameInput = "" }) {
-                                Icon(Icons.Default.Close, contentDescription = "Borrar")
-                            }
-                        }
-                    }
-                )
-            },
-            dismissButton = {
-                TextButton(onClick = { showNameDialog = false }) { Text("Cancelar") }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showNameDialog = false
-                        viewModel.confirmSelection(
-                            context.contentResolver,
-                            nameInput.trim().ifBlank { "CamScanner_${System.currentTimeMillis()}" }
-                        )
-                    }
-                ) { Text("Crear") }
-            }
-        )
     }
 
     if (autoLaunchScanner) {
@@ -220,7 +169,9 @@ fun CaptureScreen(
                 if (documentId != null) {
                     viewModel.addToExistingDocument(context.contentResolver, documentId)
                 } else {
-                    showNameDialog = true
+                    val timestamp = SimpleDateFormat("yyyyMMdd_HHmm", Locale.getDefault()).format(Date())
+                    val defaultName = "CamScanner_$timestamp"
+                    viewModel.confirmSelection(context.contentResolver, defaultName)
                 }
             },
             onRequestPermission = { permissionState.launchPermissionRequest() },
