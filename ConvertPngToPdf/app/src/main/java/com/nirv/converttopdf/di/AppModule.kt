@@ -10,6 +10,7 @@ import com.nirv.converttopdf.domain.usecase.ExportToPdfUseCase
 import com.nirv.converttopdf.ui.capture.CaptureViewModel
 import com.nirv.converttopdf.ui.export.ExportViewModel
 import com.nirv.converttopdf.ui.files.DirectoryViewModel
+import com.nirv.converttopdf.ui.home.HomeViewModel
 import com.nirv.converttopdf.ui.preview.PreviewViewModel
 import com.nirv.converttopdf.ui.signature.DrawSignatureViewModel
 import com.nirv.converttopdf.ui.signature.SignatureViewModel
@@ -32,6 +33,7 @@ val appModule = module {
     single { ReadPdfRepository(get()) }
 
     // ── ViewModels ────────────────────────────────────────────────────────────
+    viewModel { HomeViewModel(get(), get()) }
     viewModel { CaptureViewModel(get()) }                                    // DocumentRepository
     viewModel { (docId: Long) -> PreviewViewModel(docId, get(), get(), get()) } // docId + DocumentRepository + ImageRepository + ExportToPdfUseCase
     viewModel { ExportViewModel(androidApplication(), get(), get()) }
