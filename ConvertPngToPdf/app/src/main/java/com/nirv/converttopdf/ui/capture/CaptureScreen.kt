@@ -206,7 +206,9 @@ fun CaptureScreenContent(
                     .statusBarsPadding()
                     .padding(horizontal = 4.dp, vertical = 2.dp)
             ) {
-                IconButton(onClick = onBack, modifier = Modifier.size(40.dp).align(Alignment.CenterStart)) {
+                IconButton(onClick = onBack, modifier = Modifier
+                    .size(40.dp)
+                    .align(Alignment.CenterStart)) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver",
                         tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(18.dp))
                 }
@@ -215,7 +217,9 @@ fun CaptureScreenContent(
                 
                 Box(
                     modifier = Modifier
-                        .padding(end = 8.dp).size(34.dp).clip(CircleShape)
+                        .padding(end = 8.dp)
+                        .size(34.dp)
+                        .clip(CircleShape)
                         .background(MaterialTheme.colorScheme.secondary)
                         .clickable(onClick = onScanClick)
                         .align(Alignment.CenterEnd),
@@ -230,14 +234,17 @@ fun CaptureScreenContent(
             if (selectedUris.isNotEmpty()) {
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth().background(MaterialTheme.colorScheme.surface)
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surface)
                         .padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 20.dp)
                         .navigationBarsPadding()
                 ) {
                     val label = if (isAddingToExisting) "Añadir a documento" else "Siguiente (${selectedUris.size})"
                     Button(
                         onClick  = onConfirm,
-                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp),
                         colors   = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                         shape    = RoundedCornerShape(12.dp)
                     ) {
@@ -248,15 +255,21 @@ fun CaptureScreenContent(
         }
     ) { padding ->
         when {
-            !permissionGranted -> PermissionPrompt(permissionRationale, onRequestPermission, Modifier.fillMaxSize().padding(padding))
+            !permissionGranted -> PermissionPrompt(permissionRationale, onRequestPermission, Modifier
+                .fillMaxSize()
+                .padding(padding))
             
             isGalleryLoading -> {
-                Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+                Box(modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(strokeWidth = 3.dp)
                 }
             }
 
-            galleryUris.isEmpty() -> Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+            galleryUris.isEmpty() -> Box(Modifier
+                .fillMaxSize()
+                .padding(padding), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("No se encontraron imágenes", style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.height(8.dp))
@@ -265,7 +278,9 @@ fun CaptureScreenContent(
             }
             else -> LazyVerticalGrid(
                 columns = GridCells.Fixed(3),
-                modifier = Modifier.fillMaxSize().padding(padding),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding),
                 contentPadding = PaddingValues(2.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
                 horizontalArrangement = Arrangement.spacedBy(2.dp)
@@ -280,15 +295,24 @@ fun CaptureScreenContent(
 
 @Composable
 private fun GalleryItem(uri: Uri, isSelected: Boolean, onToggle: () -> Unit) {
-    Box(modifier = Modifier.aspectRatio(1f).clip(RoundedCornerShape(4.dp)).clickable { onToggle() }) {
+    Box(modifier = Modifier
+        .aspectRatio(1f)
+        .clip(RoundedCornerShape(4.dp))
+        .clickable { onToggle() }) {
         AsyncImage(
             model = ImageRequest.Builder(LocalContext.current).data(uri).crossfade(true).size(300).build(),
             contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
         )
         if (isSelected) {
-            Box(modifier = Modifier.fillMaxSize().background(Color(0x66000000)))
+            Box(modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0x66000000)))
             Icon(Icons.Default.CheckCircle, null, tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(6.dp).size(24.dp).align(Alignment.TopEnd).background(Color.White, CircleShape))
+                modifier = Modifier
+                    .padding(6.dp)
+                    .size(24.dp)
+                    .align(Alignment.TopEnd)
+                    .background(Color.White, CircleShape))
         }
     }
 }
