@@ -1,8 +1,15 @@
 package com.nirv.converttopdf.navigation
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.ContentTransform
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
@@ -20,9 +27,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.WindowInsets
+import com.nirv.converttopdf.ui.SplashScreen
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -43,8 +54,25 @@ import com.nirv.converttopdf.ui.theme.PlazoMuted
 private fun isMainTab(dest: Any?): Boolean =
     dest is Home || dest is DirectoryFiles || dest is Settings
 
+private val TRANSITION_MS = 280
+
+private val pushTransition: ContentTransform
+    get() = (slideInHorizontally(tween(TRANSITION_MS)) { it } + fadeIn(tween(TRANSITION_MS))) togetherWith
+            (slideOutHorizontally(tween(TRANSITION_MS)) { -it / 4 } + fadeOut(tween(TRANSITION_MS, delayMillis = 0)))
+
+private val popTransition: ContentTransform
+    get() = (slideInHorizontally(tween(TRANSITION_MS)) { -it / 4 } + fadeIn(tween(TRANSITION_MS))) togetherWith
+            (slideOutHorizontally(tween(TRANSITION_MS)) { it } + fadeOut(tween(TRANSITION_MS)))
+
 @Composable
 fun AppNavHost() {
+    var showSplash by remember { mutableStateOf(true) }
+
+    if (showSplash) {
+        SplashScreen(onFinished = { showSplash = false })
+        return
+    }
+
     val backStack = remember { mutableStateListOf<Any>(Home) }
     val currentDest = backStack.lastOrNull()
 
@@ -84,8 +112,10 @@ fun AppNavHost() {
     ) { paddingValues ->
         Box(modifier = Modifier.padding(paddingValues)) {
             NavDisplay(
-                backStack = backStack,
-                onBack    = { backStack.removeLastOrNull() },
+                backStack          = backStack,
+                onBack             = { backStack.removeLastOrNull() },
+                transitionSpec     = { pushTransition },
+                popTransitionSpec  = { popTransition },
                 entryProvider = { key ->
                     when (key) {
                         is Home -> NavEntry(key = Home) {
@@ -127,7 +157,7 @@ fun AppNavHost() {
                             PreviewScreen(
                                 documentId = key.documentId,
                                 onBack     = { backStack.removeLastOrNull() },
-                                onAddMore  = { backStack.add(Capture(autoLaunchScanner = true, documentId = key.documentId)) },
+                                onAddMore  = { backStack.add(Capture(documentId = key.documentId)) },
                                 onSign     = { backStack.add(Sign) }
                             )
                         }

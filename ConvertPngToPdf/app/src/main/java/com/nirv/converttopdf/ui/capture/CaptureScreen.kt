@@ -7,6 +7,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -130,13 +131,19 @@ fun CaptureScreen(
                         ?.use { BitmapFactory.decodeStream(it) }
                         ?.let { bitmap ->
                             viewModel.onBitmapCaptured(
-                                bitmap     = bitmap,
-                                documentId = documentId,
-                                documentName = null // El ViewModel o el flujo directo asignarán el nombre
+                                bitmap       = bitmap,
+                                documentId   = documentId,
+                                documentName = null
                             )
                         }
                 }
+        } else if (autoLaunchScanner) {
+            // Usuario canceló la cámara en modo auto-launch → volver atrás
+            // (evita que la pantalla quede colgada en CircularProgressIndicator)
+            onBack()
         }
+        // Si NO es autoLaunch (ícono cámara en grid), simplemente no hacer nada
+        // y dejar al usuario en la galería
     }
 
     val launchScanner: () -> Unit = {
@@ -263,6 +270,9 @@ fun CaptureScreenContent(
                     verticalArrangement = Arrangement.spacedBy(2.dp),
                     horizontalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
+                    item {
+                        CameraCell(onClick = onScanClick)
+                    }
                     items(galleryUris) { uri ->
                         GalleryItem(uri, uri in selectedUris) { onToggleSelect(uri) }
                     }
@@ -306,10 +316,46 @@ fun CaptureScreenContent(
 }
 
 @Composable
+private fun CameraCell(onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .aspectRatio(1f)
+            .clip(RoundedCornerShape(4.dp))
+            .background(MaterialTheme.colorScheme.primary)
+            .clickable { onClick() },
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Icon(
+                imageVector        = Icons.Default.CameraAlt,
+                contentDescription = "Abrir cámara",
+                tint               = MaterialTheme.colorScheme.onPrimary,
+                modifier           = Modifier.size(32.dp)
+            )
+            Text(
+                text       = "Cámara",
+                color      = MaterialTheme.colorScheme.onPrimary,
+                fontSize   = 11.sp,
+                fontWeight = FontWeight.Medium
+            )
+        }
+    }
+}
+
+@Composable
 private fun GalleryItem(uri: Uri, isSelected: Boolean, onToggle: () -> Unit) {
+    val borderModifier = if (isSelected)
+        Modifier.border(3.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(4.dp))
+    else
+        Modifier
+
     Box(modifier = Modifier
         .aspectRatio(1f)
         .clip(RoundedCornerShape(4.dp))
+        .then(borderModifier)
         .clickable { onToggle() }) {
         AsyncImage(
             model = ImageRequest.Builder(LocalContext.current).data(uri).crossfade(true).size(300).build(),
@@ -318,13 +364,13 @@ private fun GalleryItem(uri: Uri, isSelected: Boolean, onToggle: () -> Unit) {
         if (isSelected) {
             Box(modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0x66000000)))
+                .background(Color(0x44000000)))
             Icon(Icons.Default.CheckCircle, null, tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier
                     .padding(6.dp)
                     .size(24.dp)
                     .align(Alignment.TopEnd)
-                    .background(Color.White, CircleShape))
+                    .background(Color(0xFFB0B0B0), CircleShape))
         }
     }
 }

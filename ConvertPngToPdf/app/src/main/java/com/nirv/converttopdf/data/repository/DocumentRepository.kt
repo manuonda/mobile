@@ -9,6 +9,7 @@ import com.nirv.converttopdf.data.db.entity.DocumentEntity
 import com.nirv.converttopdf.data.db.entity.DocumentPageEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
@@ -62,7 +63,24 @@ class DocumentRepository(
         Log.d(TAG, "addPagesToDocument: total páginas=${startOrder + bitmaps.size}")
     }
 
-    // ── Cargar bitmaps de un documento desde disco ────────────────────────────
+    // ── Flow reactivo de rutas (se actualiza automáticamente con Room) ───────
+    fun getDocumentPathsFlow(docId: Long): Flow<List<String>> =
+        dao.getPagesForDocument(docId).map { pages ->
+            pages.sortedBy { it.pageOrder }
+                 .map { it.imagePath }
+                 .filter { File(it).exists() }
+        }
+
+    // ── Cargar rutas de páginas una vez (para usos puntuales) ────────────────
+    suspend fun getDocumentPaths(docId: Long): List<String> =
+        withContext(Dispatchers.IO) {
+            dao.getPagesForDocumentOnce(docId)
+                .sortedBy { it.pageOrder }
+                .map { it.imagePath }
+                .filter { File(it).exists() }
+        }
+
+    // ── Cargar bitmaps full-res (solo para exportar PDF u operaciones) ────────
     suspend fun getDocumentBitmaps(docId: Long): List<Bitmap> =
         withContext(Dispatchers.IO) {
             val pages = dao.getPagesForDocumentOnce(docId).sortedBy { it.pageOrder }

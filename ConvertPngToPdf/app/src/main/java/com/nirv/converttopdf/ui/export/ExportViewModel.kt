@@ -40,7 +40,7 @@ class ExportViewModel(
 
         viewModelScope.launch {
             _uiState.value = ExportUiState.Loading
-            exportToPdfUseCase(images)
+            exportToPdfUseCase.fromBitmaps(images)
                 .onSuccess { uri ->
                     _uiState.value = ExportUiState.Success(uri)
                 }

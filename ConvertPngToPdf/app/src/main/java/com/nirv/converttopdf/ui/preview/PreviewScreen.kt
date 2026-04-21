@@ -1,9 +1,6 @@
 package com.nirv.converttopdf.ui.preview
 
 import android.content.Intent
-import android.graphics.Bitmap
-import android.util.Log
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -22,6 +19,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
@@ -30,45 +28,57 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AddAPhoto
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Create
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.PictureAsPdf
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import kotlinx.coroutines.launch
 import com.nirv.converttopdf.ui.theme.PlazoMuted
 import com.nirv.converttopdf.ui.theme.PlazoOlive
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
+import java.io.File
 
 @Composable
 fun PreviewScreen(
@@ -81,47 +91,48 @@ fun PreviewScreen(
         parameters = { parametersOf(documentId) }
     )
 ) {
-    val images       by viewModel.images.collectAsStateWithLifecycle()
+    val pages        by viewModel.pages.collectAsStateWithLifecycle()
     val shareState   by viewModel.shareState.collectAsStateWithLifecycle()
     val documentName by viewModel.documentName.collectAsStateWithLifecycle()
     val isLoading    by viewModel.isLoading.collectAsStateWithLifecycle()
 
-    LaunchedEffect(Unit) {
-        Log.d("PreviewScreen", "Cargando imágenes con ID :$documentId")
-    }
-
     PreviewScreenContent(
-        images        = images,
+        pages         = pages,
         shareState    = shareState,
         documentTitle = documentName,
         isLoading     = isLoading,
         onBack        = onBack,
         onAddMore     = onAddMore,
         onSign        = onSign,
-        onDeleteImage = { viewModel.removeImage(it) },
+        onDeletePage  = { viewModel.removePage(it) },
         onShare       = { viewModel.shareAsPdf() },
         onResetShareState = { viewModel.resetShareState() },
         onTitleChange = { viewModel.renameDocument(it) }
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PreviewScreenContent(
-    images: List<Bitmap>,
+    pages: List<String>,
     shareState: ShareState,
     documentTitle: String,
     isLoading: Boolean = false,
     onBack: () -> Unit,
     onAddMore: () -> Unit,
     onSign: () -> Unit,
-    onDeleteImage: (Int) -> Unit,
+    onDeletePage: (Int) -> Unit,
     onShare: () -> Unit,
     onResetShareState: () -> Unit,
     onTitleChange: (String) -> Unit
 ) {
-    val context = LocalContext.current
+    val context         = LocalContext.current
+    val scope           = rememberCoroutineScope()
+    val shareSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
     var showRenameDialog by remember { mutableStateOf(false) }
     var renameInput      by remember { mutableStateOf("") }
+    var showShareSheet   by remember { mutableStateOf(false) }
 
     LaunchedEffect(shareState) {
         if (shareState is ShareState.Ready) {
@@ -166,119 +177,175 @@ fun PreviewScreenContent(
         )
     }
 
-    Scaffold(
-        topBar = {
-            Row(
+    if (showShareSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showShareSheet = false },
+            sheetState       = shareSheetState,
+            containerColor   = MaterialTheme.colorScheme.surface
+        ) {
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = 32.dp)
+            ) {
+                Text(
+                    "Exportar documento",
+                    fontWeight = FontWeight.Bold,
+                    fontSize   = 16.sp,
+                    modifier   = Modifier.padding(bottom = 12.dp)
+                )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline, thickness = 0.5.dp)
+                Spacer(Modifier.height(8.dp))
+
+                ShareOptionRow(
+                    icon  = Icons.Default.PictureAsPdf,
+                    label = "Compartir como PDF",
+                    tint  = Color(0xFFE53935)
+                ) {
+                    scope.launch { shareSheetState.hide() }.invokeOnCompletion {
+                        showShareSheet = false
+                        onShare()
+                    }
+                }
+
+                ShareOptionRow(
+                    icon  = Icons.Default.Image,
+                    label = "Compartir como imágenes",
+                    tint  = MaterialTheme.colorScheme.primary
+                ) {
+                    scope.launch { shareSheetState.hide() }.invokeOnCompletion {
+                        showShareSheet = false
+                    }
+                }
+
+                ShareOptionRow(
+                    icon  = Icons.Default.Edit,
+                    label = "Firmar documento",
+                    tint  = PlazoOlive
+                ) {
+                    scope.launch { shareSheetState.hide() }.invokeOnCompletion {
+                        showShareSheet = false
+                        onSign()
+                    }
+                }
+            }
+        }
+    }
+
+    Scaffold(
+        contentWindowInsets = WindowInsets(0),
+        topBar = {
+            Column(
+                modifier = Modifier
                     .background(MaterialTheme.colorScheme.surface)
                     .statusBarsPadding()
-                    .padding(horizontal = 4.dp, vertical = 2.dp),
-                verticalAlignment = Alignment.CenterVertically
             ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                 IconButton(onClick = onBack, modifier = Modifier.size(40.dp)) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver",
                         tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(20.dp))
                 }
                 val displayTitle = documentTitle.ifBlank {
-                    if (images.isEmpty()) "Previsualizar" else "Imágenes (${images.size})"
+                    if (pages.isEmpty()) "Previsualizar" else "Imágenes (${pages.size})"
                 }
                 Text(
-                    text = displayTitle,
+                    text       = displayTitle,
                     fontWeight = FontWeight.SemiBold,
-                    fontSize = 15.sp,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    modifier = Modifier.weight(1f)
+                    fontSize   = 15.sp,
+                    color      = MaterialTheme.colorScheme.onSurface,
+                    maxLines   = 1,
+                    modifier   = Modifier.weight(1f)
                 )
-                if (documentTitle.isNotBlank()) {
-                    IconButton(
-                        onClick  = { renameInput = documentTitle; showRenameDialog = true },
-                        modifier = Modifier.size(36.dp)
-                    ) {
-                        Icon(Icons.Default.Create, "Renombrar",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(18.dp))
+                    if (documentTitle.isNotBlank()) {
+                        IconButton(
+                            onClick  = { renameInput = documentTitle; showRenameDialog = true },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(Icons.Default.Create, "Renombrar",
+                                tint = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.size(18.dp))
+                        }
                     }
-                }
-                if (images.isNotEmpty()) {
-                    IconButton(
-                        onClick  = { images.indices.reversed().forEach { onDeleteImage(it) } },
-                        modifier = Modifier.size(36.dp)
-                    ) {
-                        Icon(Icons.Default.Delete, "Eliminar todas",
-                            tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
+                    if (pages.isNotEmpty()) {
+                        IconButton(
+                            onClick  = { pages.indices.reversed().forEach { onDeletePage(it) } },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(Icons.Default.Delete, "Eliminar todas",
+                                tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(18.dp))
+                        }
                     }
                 }
             }
         },
         bottomBar = {
-            if (images.isNotEmpty()) {
-                Column {
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outline, thickness = 0.5.dp)
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(MaterialTheme.colorScheme.surface)
-                            .padding(horizontal = 16.dp, vertical = 12.dp)
-                            .navigationBarsPadding(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment     = Alignment.CenterVertically
-                    ) {
-                        OutlinedButton(
-                            onClick  = onSign,
-                            modifier = Modifier.weight(1f).height(48.dp),
-                            shape    = RoundedCornerShape(12.dp),
-                            border   = androidx.compose.foundation.BorderStroke(1.5.dp, PlazoOlive)
-                        ) {
-                            Icon(Icons.Default.Create, null, tint = PlazoOlive,
-                                modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Firmar", fontWeight = FontWeight.SemiBold, color = PlazoOlive)
-                        }
-                        Button(
-                            onClick  = onShare,
-                            modifier = Modifier.weight(2f).height(48.dp),
-                            shape    = RoundedCornerShape(12.dp),
-                            colors   = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary
-                            ),
-                            enabled  = shareState !is ShareState.Loading
-                        ) {
-                            if (shareState is ShareState.Loading) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(20.dp), strokeWidth = 2.dp,
-                                    color = MaterialTheme.colorScheme.onPrimary
-                                )
-                            } else {
-                                Icon(Icons.Default.Share, null,
-                                    modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(8.dp))
-                                Text("Compartir PDF", fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
+            Column(
+                modifier = Modifier
+                    .background(MaterialTheme.colorScheme.surface)
+                    .navigationBarsPadding()
+            ) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline, thickness = 0.5.dp)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment     = Alignment.CenterVertically
+                ) {
+                    BottomBarAction(
+                        icon    = Icons.Default.AddAPhoto,
+                        label   = "Añadir",
+                        onClick = onAddMore
+                    )
+                    BottomBarAction(
+                        icon    = Icons.Default.Edit,
+                        label   = "Editar",
+                        onClick = { renameInput = documentTitle; showRenameDialog = true }
+                    )
+                    BottomBarAction(
+                        icon    = Icons.Default.Share,
+                        label   = if (shareState is ShareState.Loading) "…" else "Compartir",
+                        enabled = pages.isNotEmpty() && shareState !is ShareState.Loading,
+                        onClick = { showShareSheet = true }
+                    )
+                    BottomBarAction(
+                        icon    = Icons.Default.Settings,
+                        label   = "Ajustes",
+                        onClick = { }
+                    )
                 }
             }
         }
     ) { padding ->
         when {
             isLoading -> {
-                Box(modifier = Modifier.fillMaxSize().padding(padding),
-                    contentAlignment = Alignment.Center) {
+                Box(
+                    modifier         = Modifier.fillMaxSize().padding(padding),
+                    contentAlignment = Alignment.Center
+                ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         CircularProgressIndicator(modifier = Modifier.size(48.dp))
                         Spacer(Modifier.height(16.dp))
-                        Text("Cargando imágenes…",
+                        Text("Cargando…",
                             style = MaterialTheme.typography.bodyMedium, color = PlazoMuted)
                     }
                 }
             }
-            images.isEmpty() -> {
-                Box(modifier = Modifier.fillMaxSize().padding(padding),
-                    contentAlignment = Alignment.Center) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.padding(24.dp)) {
+            pages.isEmpty() -> {
+                Box(
+                    modifier         = Modifier.fillMaxSize().padding(padding),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(24.dp)
+                    ) {
                         Box(
                             modifier = Modifier.size(72.dp).clip(CircleShape)
                                 .background(MaterialTheme.colorScheme.secondary),
@@ -289,9 +356,9 @@ fun PreviewScreenContent(
                         }
                         Spacer(Modifier.height(16.dp))
                         Text("No hay imágenes",
-                            style = MaterialTheme.typography.titleMedium,
+                            style      = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onBackground)
+                            color      = MaterialTheme.colorScheme.onBackground)
                         Spacer(Modifier.height(6.dp))
                         Text("Toca el botón + para añadir imágenes",
                             style = MaterialTheme.typography.bodyMedium, color = PlazoMuted)
@@ -311,20 +378,20 @@ fun PreviewScreenContent(
             }
             else -> {
                 LazyVerticalGrid(
-                    columns = GridCells.Fixed(2),
-                    modifier = Modifier
+                    columns               = GridCells.Fixed(2),
+                    modifier              = Modifier
                         .fillMaxSize()
                         .padding(padding)
                         .padding(horizontal = 12.dp),
-                    contentPadding = PaddingValues(top = 10.dp, bottom = 16.dp),
+                    contentPadding        = PaddingValues(top = 10.dp, bottom = 16.dp),
                     verticalArrangement   = Arrangement.spacedBy(10.dp),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    itemsIndexed(images) { index, bitmap ->
-                        ImageCard(
+                    itemsIndexed(pages) { index, path ->
+                        PageCard(
                             index    = index,
-                            bitmap   = bitmap,
-                            onDelete = { onDeleteImage(index) }
+                            path     = path,
+                            onDelete = { onDeletePage(index) }
                         )
                     }
                     item {
@@ -337,20 +404,29 @@ fun PreviewScreenContent(
 }
 
 @Composable
-private fun ImageCard(index: Int, bitmap: Bitmap, onDelete: () -> Unit) {
+private fun PageCard(index: Int, path: String, onDelete: () -> Unit) {
+    val context = LocalContext.current
+    val imageRequest = remember(path) {
+        ImageRequest.Builder(context)
+            .data(File(path))
+            .memoryCacheKey(path)
+            .diskCacheKey(path)
+            .size(512)
+            .crossfade(false)
+            .build()
+    }
     androidx.compose.material3.Card(
         shape     = RoundedCornerShape(12.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
         modifier  = Modifier.fillMaxWidth().aspectRatio(1f)
     ) {
         Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
-            Image(
-                bitmap             = bitmap.asImageBitmap(),
+            AsyncImage(
+                model              = imageRequest,
                 contentDescription = "Imagen ${index + 1}",
                 modifier           = Modifier.fillMaxSize(),
                 contentScale       = ContentScale.Crop
             )
-            // Badge número
             Box(
                 modifier = Modifier.padding(6.dp).size(22.dp)
                     .background(MaterialTheme.colorScheme.primary, CircleShape)
@@ -360,7 +436,6 @@ private fun ImageCard(index: Int, bitmap: Bitmap, onDelete: () -> Unit) {
                 Text("${index + 1}", color = MaterialTheme.colorScheme.onPrimary,
                     fontSize = 10.sp, fontWeight = FontWeight.Bold)
             }
-            // Botón cerrar
             Box(
                 modifier = Modifier.padding(6.dp).size(24.dp)
                     .background(Color.Black.copy(alpha = 0.5f), CircleShape)
@@ -377,6 +452,54 @@ private fun ImageCard(index: Int, bitmap: Bitmap, onDelete: () -> Unit) {
 }
 
 @Composable
+private fun BottomBarAction(
+    icon: ImageVector,
+    label: String,
+    enabled: Boolean = true,
+    tint: Color = Color.Unspecified,
+    onClick: () -> Unit
+) {
+    val effectiveTint = when {
+        !enabled                  -> PlazoMuted
+        tint != Color.Unspecified -> tint
+        else                      -> MaterialTheme.colorScheme.onSurface
+    }
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 8.dp)
+    ) {
+        Icon(icon, contentDescription = label,
+            tint = effectiveTint, modifier = Modifier.size(22.dp))
+        Text(label, fontSize = 10.sp, color = effectiveTint, fontWeight = FontWeight.Medium)
+    }
+}
+
+@Composable
+private fun ShareOptionRow(
+    icon: ImageVector,
+    label: String,
+    tint: Color,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .clickable { onClick() }
+            .padding(vertical = 14.dp, horizontal = 8.dp),
+        verticalAlignment     = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(24.dp))
+        Text(label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+    }
+}
+
+@Composable
 private fun AddImageCard(onClick: () -> Unit) {
     Box(
         modifier = Modifier
@@ -385,11 +508,13 @@ private fun AddImageCard(onClick: () -> Unit) {
             .clip(RoundedCornerShape(12.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .clickable { onClick() }
-            .border(1.5.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(12.dp)),
+            .border(2.dp, MaterialTheme.colorScheme.onSurfaceVariant, RoundedCornerShape(12.dp)),
         contentAlignment = Alignment.Center
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
             Icon(Icons.Default.Add, null,
                 modifier = Modifier.size(32.dp),
                 tint = PlazoMuted)

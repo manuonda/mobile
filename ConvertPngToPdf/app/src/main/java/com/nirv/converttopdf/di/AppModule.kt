@@ -35,7 +35,7 @@ val appModule = module {
     // ── ViewModels ────────────────────────────────────────────────────────────
     viewModel { HomeViewModel(get(), get()) }
     viewModel { CaptureViewModel(get()) }                                    // DocumentRepository
-    viewModel { (docId: Long) -> PreviewViewModel(docId, get(), get(), get()) } // docId + DocumentRepository + ImageRepository + ExportToPdfUseCase
+    viewModel { (docId: Long) -> PreviewViewModel(docId, get(), get()) }        // docId + DocumentRepository + ExportToPdfUseCase
     viewModel { ExportViewModel(androidApplication(), get(), get()) }
     viewModel { SignatureViewModel(get(), get()) }
     viewModel { DrawSignatureViewModel(get()) }
