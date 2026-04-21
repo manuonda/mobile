@@ -3,12 +3,17 @@ package com.nirv.converttopdf.data.repository
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.util.Log
 import com.nirv.converttopdf.data.db.dao.DocumentDao
 import com.nirv.converttopdf.data.db.entity.DocumentEntity
 import com.nirv.converttopdf.data.db.entity.DocumentPageEntity
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
+
+private const val TAG = "DocumentRepo"
 
 class DocumentRepository(
     private val dao: DocumentDao,
@@ -18,18 +23,22 @@ class DocumentRepository(
 
     // ── Crear un documento nuevo con sus páginas ──────────────────────────────
     suspend fun createDocument(name: String, bitmaps: List<Bitmap>): Long {
+        Log.d(TAG, "createDocument: nombre='$name', páginas=${bitmaps.size}")
         val docId = dao.insertDocument(
             DocumentEntity(name = name, pageCount = bitmaps.size)
         )
         val folder = documentFolder(docId)
         folder.mkdirs()
+        Log.d(TAG, "createDocument: carpeta=${folder.absolutePath}")
         bitmaps.forEachIndexed { i, bitmap ->
             val file = File(folder, "page_$i.jpg")
             FileOutputStream(file).use { bitmap.compress(Bitmap.CompressFormat.JPEG, 90, it) }
+            Log.d(TAG, "  page_$i.jpg guardado (${file.length()} bytes)")
             dao.insertPage(
                 DocumentPageEntity(documentId = docId, imagePath = file.absolutePath, pageOrder = i)
             )
         }
+        Log.d(TAG, "createDocument: completado, docId=$docId")
         return docId
     }
 
@@ -37,38 +46,54 @@ class DocumentRepository(
     suspend fun addPagesToDocument(docId: Long, bitmaps: List<Bitmap>) {
         val existing = dao.getPagesForDocumentOnce(docId)
         val startOrder = existing.size
+        Log.d(TAG, "addPagesToDocument: docId=$docId, páginas existentes=$startOrder, nuevas=${bitmaps.size}")
         val folder = documentFolder(docId)
         folder.mkdirs()
         bitmaps.forEachIndexed { i, bitmap ->
             val order = startOrder + i
             val file  = File(folder, "page_$order.jpg")
             FileOutputStream(file).use { bitmap.compress(Bitmap.CompressFormat.JPEG, 90, it) }
+            Log.d(TAG, "  page_$order.jpg guardado (${file.length()} bytes)")
             dao.insertPage(
                 DocumentPageEntity(documentId = docId, imagePath = file.absolutePath, pageOrder = order)
             )
         }
         dao.updatePageCount(docId, startOrder + bitmaps.size)
+        Log.d(TAG, "addPagesToDocument: total páginas=${startOrder + bitmaps.size}")
     }
 
     // ── Cargar bitmaps de un documento desde disco ────────────────────────────
     suspend fun getDocumentBitmaps(docId: Long): List<Bitmap> =
-        dao.getPagesForDocumentOnce(docId)
-            .sortedBy { it.pageOrder }
-            .mapNotNull { page ->
+        withContext(Dispatchers.IO) {
+            val pages = dao.getPagesForDocumentOnce(docId).sortedBy { it.pageOrder }
+            Log.d(TAG, "getDocumentBitmaps: docId=$docId, páginas en DB=${pages.size}")
+            pages.mapNotNull { page ->
                 val file = File(page.imagePath)
-                if (file.exists()) BitmapFactory.decodeFile(file.absolutePath) else null
-            }
+                if (file.exists()) {
+                    val bmp = BitmapFactory.decodeFile(file.absolutePath)
+                    Log.d(TAG, "  order=${page.pageOrder} path=${page.imagePath} → ${if (bmp != null) "${bmp.width}x${bmp.height}" else "NULL (decodeFile falló)"}")
+                    bmp
+                } else {
+                    Log.w(TAG, "  order=${page.pageOrder} ARCHIVO NO EXISTE: ${page.imagePath}")
+                    null
+                }
+            }.also { Log.d(TAG, "getDocumentBitmaps: ${it.size}/${pages.size} bitmaps cargados") }
+        }
 
     // ── Eliminar una página (re-ordena las restantes) ─────────────────────────
     suspend fun deletePage(docId: Long, pageOrder: Int) {
+        Log.d(TAG, "deletePage: docId=$docId, pageOrder=$pageOrder")
         val pages = dao.getPagesForDocumentOnce(docId)
-        val target = pages.find { it.pageOrder == pageOrder } ?: return
+        val target = pages.find { it.pageOrder == pageOrder } ?: run {
+            Log.w(TAG, "deletePage: no se encontró página con order=$pageOrder")
+            return
+        }
         File(target.imagePath).delete()
         dao.deletePage(docId, pageOrder)
-        // re-numerar páginas posteriores
         pages.filter { it.pageOrder > pageOrder }
             .forEach { dao.updatePageOrder(it.id, it.pageOrder - 1) }
         dao.updatePageCount(docId, (pages.size - 1).coerceAtLeast(0))
+        Log.d(TAG, "deletePage: completado, páginas restantes=${(pages.size - 1).coerceAtLeast(0)}")
     }
 
     // ── Renombrar documento ───────────────────────────────────────────────────

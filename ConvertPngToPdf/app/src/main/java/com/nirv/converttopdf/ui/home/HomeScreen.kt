@@ -42,7 +42,6 @@ fun HomeScreen(
     onFiles: () -> Unit,
     onSettings: () -> Unit,
     onDraftClick: (Long) -> Unit,
-    onPdfClick: (PdfFile) -> Unit,
     viewModel: HomeViewModel = koinViewModel()
 ) {
     val draftDocs by viewModel.draftDocuments.collectAsState()
@@ -53,7 +52,6 @@ fun HomeScreen(
         onFiles = onFiles,
         onSettings = onSettings,
         onDraftClick = onDraftClick,
-        onPdfClick = onPdfClick
     )
 }
 
@@ -64,7 +62,6 @@ fun HomeScreenContent(
     onFiles: () -> Unit,
     onSettings: () -> Unit,
     onDraftClick: (Long) -> Unit,
-    onPdfClick: (PdfFile) -> Unit
 ) {
     var searchQuery by remember { mutableStateOf("") }
 
@@ -125,53 +122,9 @@ fun HomeScreenContent(
     }
 }
 
-@Composable
-private fun SearchBar(
-    query: String,
-    onQueryChange: (String) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val focusManager = LocalFocusManager.current
 
-    TextField(
-        value = query,
-        onValueChange = onQueryChange,
-        modifier = modifier
-            .fillMaxWidth()
-            .height(56.dp)
-            .clip(RoundedCornerShape(28.dp)),
-        placeholder = { Text("Buscar archivos o proyectos...", fontSize = 14.sp) },
-        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = PlazoMuted) },
-        trailingIcon = {
-            if (query.isNotEmpty()) {
-                IconButton(onClick = { onQueryChange("") }) {
-                    Icon(Icons.Default.Close, contentDescription = "Borrar", tint = PlazoMuted)
-                }
-            }
-        },
-        colors = TextFieldDefaults.colors(
-            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-            disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-            focusedIndicatorColor = Color.Transparent,
-            unfocusedIndicatorColor = Color.Transparent,
-        ),
-        singleLine = true,
-        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-        keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() })
-    )
-}
 
-@Composable
-private fun SectionTitle(title: String) {
-    Text(
-        text = title,
-        modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-        style = MaterialTheme.typography.titleMedium,
-        fontWeight = FontWeight.Bold,
-        color = MaterialTheme.colorScheme.onBackground
-    )
-}
+
 
 @Composable
 private fun DraftRow(
@@ -205,7 +158,7 @@ private fun DraftRow(
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = draft.name,
+                text = "${draft.name} #${draft.id}",
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1
@@ -265,34 +218,7 @@ private fun EmptyRecentState(
     }
 }
 
-@Composable
-private fun RecentFilesList(
-    files: List<PdfFile>,
-    onFileClick: (PdfFile) -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .background(MaterialTheme.colorScheme.surface)
-            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(16.dp))
-    ) {
-        files.forEachIndexed { index, file ->
-            RecentFileRow(
-                file = file,
-                onClick = { onFileClick(file) }
-            )
-            if (index < files.lastIndex) {
-                HorizontalDivider(
-                    modifier = Modifier.padding(start = 56.dp, end = 16.dp),
-                    thickness = 0.5.dp,
-                    color = MaterialTheme.colorScheme.outlineVariant
-                )
-            }
-        }
-    }
-}
+
 
 private fun formatDate(timestamp: Long): String {
     val sdf = SimpleDateFormat("dd MMM, HH:mm", Locale.getDefault())
@@ -311,8 +237,7 @@ fun HomeScreenPreview() {
             onScanNew = {},
             onFiles = {},
             onSettings = {},
-            onDraftClick = {},
-            onPdfClick = {}
+            onDraftClick = {}
         )
     }
 }

@@ -4,6 +4,7 @@ import android.content.ContentResolver
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.provider.MediaStore
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nirv.converttopdf.data.repository.DocumentRepository
@@ -20,6 +21,8 @@ sealed class CaptureUiState {
     data class  Done(val documentId: Long) : CaptureUiState()
     data class  Error(val message: String) : CaptureUiState()
 }
+
+private const val TAG = "CaptureVM"
 
 class CaptureViewModel(
     private val documentRepository: DocumentRepository
@@ -81,13 +84,17 @@ class CaptureViewModel(
 
     fun confirmSelection(contentResolver: ContentResolver, documentName: String) {
         val uris = _selectedUris.value.toList()
+        Log.d(TAG, "confirmSelection: ${uris.size} uris seleccionadas, nombre='$documentName'")
         if (uris.isEmpty()) return
         _uiState.value = CaptureUiState.Loading
         viewModelScope.launch(Dispatchers.IO) {
             val bitmaps = uris.mapNotNull { uri ->
                 contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
+                    .also { bmp -> Log.d(TAG, "  uri=$uri → bitmap=${if (bmp != null) "${bmp.width}x${bmp.height}" else "NULL"}") }
             }
+            Log.d(TAG, "confirmSelection: ${bitmaps.size}/${uris.size} bitmaps decodificados")
             val docId = documentRepository.createDocument(documentName, bitmaps)
+            Log.d(TAG, "confirmSelection: documento creado con id=$docId")
             withContext(Dispatchers.Main) {
                 _selectedUris.value = emptySet()
                 _uiState.value = CaptureUiState.Done(docId)
@@ -97,13 +104,17 @@ class CaptureViewModel(
 
     fun addToExistingDocument(contentResolver: ContentResolver, documentId: Long) {
         val uris = _selectedUris.value.toList()
+        Log.d(TAG, "addToExistingDocument: ${uris.size} uris para docId=$documentId")
         if (uris.isEmpty()) return
         _uiState.value = CaptureUiState.Loading
         viewModelScope.launch(Dispatchers.IO) {
             val bitmaps = uris.mapNotNull { uri ->
                 contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
+                    .also { bmp -> Log.d(TAG, "  uri=$uri → bitmap=${if (bmp != null) "${bmp.width}x${bmp.height}" else "NULL"}") }
             }
+            Log.d(TAG, "addToExistingDocument: ${bitmaps.size}/${uris.size} bitmaps decodificados")
             documentRepository.addPagesToDocument(documentId, bitmaps)
+            Log.d(TAG, "addToExistingDocument: páginas añadidas a docId=$documentId")
             withContext(Dispatchers.Main) {
                 _selectedUris.value = emptySet()
                 _uiState.value = CaptureUiState.Done(documentId)
@@ -116,16 +127,20 @@ class CaptureViewModel(
         documentName: String? = null,
         documentId: Long? = null
     ) {
+        Log.d(TAG, "onBitmapCaptured: ${bitmap.width}x${bitmap.height}, docId=$documentId, nombre=$documentName")
         _uiState.value = CaptureUiState.Loading
         viewModelScope.launch(Dispatchers.IO) {
             val docId = when {
                 documentId != null -> {
                     documentRepository.addPagesToDocument(documentId, listOf(bitmap))
+                    Log.d(TAG, "onBitmapCaptured: página añadida a docId=$documentId")
                     documentId
                 }
                 else -> {
                     val name = documentName ?: "CamScanner_${System.currentTimeMillis()}"
-                    documentRepository.createDocument(name, listOf(bitmap))
+                    val id = documentRepository.createDocument(name, listOf(bitmap))
+                    Log.d(TAG, "onBitmapCaptured: documento creado con id=$id, nombre='$name'")
+                    id
                 }
             }
             withContext(Dispatchers.Main) {

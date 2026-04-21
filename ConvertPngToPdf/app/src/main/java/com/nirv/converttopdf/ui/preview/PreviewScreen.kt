@@ -2,6 +2,7 @@ package com.nirv.converttopdf.ui.preview
 
 import android.content.Intent
 import android.graphics.Bitmap
+import android.util.Log
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -66,11 +67,18 @@ fun PreviewScreen(
     onBack: () -> Unit,
     onAddMore: () -> Unit,
     onSign: () -> Unit,
-    viewModel: PreviewViewModel = koinViewModel(parameters = { parametersOf(documentId) })
+    viewModel: PreviewViewModel = koinViewModel(
+        key        = "preview_$documentId",
+        parameters = { parametersOf(documentId) }
+    )
 ) {
     val images       by viewModel.images.collectAsStateWithLifecycle()
     val shareState   by viewModel.shareState.collectAsStateWithLifecycle()
     val documentName by viewModel.documentName.collectAsStateWithLifecycle()
+
+    LaunchedEffect(Unit) {
+        Log.d("PreviewScreen", "Cargando imágenes con ID :$documentId")
+    }
 
     PreviewScreenContent(
         images        = images,
@@ -172,7 +180,7 @@ fun PreviewScreenContent(
                         text = displayTitle, fontWeight = FontWeight.SemiBold,
                         fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurface, maxLines = 1
                     )
-                    if (images.isNotEmpty()) {
+                    if (documentTitle.isNotBlank()) {
                         IconButton(
                             onClick  = { renameInput = documentTitle; showRenameDialog = true },
                             modifier = Modifier.size(32.dp)

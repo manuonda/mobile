@@ -104,7 +104,6 @@ fun AppNavHost() {
                                 onDraftClick = { docId ->
                                     backStack.add(Preview(docId))
                                 },
-                                onPdfClick = { /* Implementar visor o compartir */ }
                             )
                         }
 
