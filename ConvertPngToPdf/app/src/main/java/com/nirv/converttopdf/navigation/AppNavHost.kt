@@ -32,6 +32,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import com.nirv.converttopdf.ui.SplashScreen
 import androidx.compose.ui.Modifier
@@ -110,7 +111,12 @@ fun AppNavHost() {
             }
         }
     ) { paddingValues ->
-        Box(modifier = Modifier.padding(paddingValues)) {
+        Box(modifier = Modifier.padding(
+            PaddingValues(
+                top    = paddingValues.calculateTopPadding(),
+                bottom = if (isMainTab(currentDest)) paddingValues.calculateBottomPadding() else 0.dp
+            )
+        )) {
             NavDisplay(
                 backStack          = backStack,
                 onBack             = { backStack.removeLastOrNull() },

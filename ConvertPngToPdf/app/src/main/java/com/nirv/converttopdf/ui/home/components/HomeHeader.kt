@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -34,8 +35,10 @@ fun HomeHeader(documentCount: Int = 0) {
             color = MaterialTheme.colorScheme.onBackground
         )
         Spacer(Modifier.height(2.dp))
-        val dateStr = SimpleDateFormat("EEEE, d MMMM", Locale("es")).format(Date())
-            .replaceFirstChar { it.uppercase() }
+        val dateStr = remember {
+            SimpleDateFormat("EEEE, d MMMM", Locale("es")).format(Date())
+                .replaceFirstChar { it.uppercase() }
+        }
         Text(
             text = if (documentCount > 0) "$documentCount documentos  •  $dateStr"
                    else dateStr,

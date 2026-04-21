@@ -6,6 +6,7 @@ import com.nirv.converttopdf.data.ReadPdfRepository
 import com.nirv.converttopdf.data.db.entity.DocumentEntity
 import com.nirv.converttopdf.data.repository.DocumentRepository
 import com.nirv.converttopdf.domain.model.PdfFile
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -37,8 +38,7 @@ class HomeViewModel(
     }
 
     fun refreshPdfFiles() {
-        viewModelScope.launch {
-            // Cargar archivos PDF generados desde el almacenamiento
+        viewModelScope.launch(Dispatchers.IO) {
             _pdfFiles.value = readPdfRepository.getGeneratePdfs()
         }
     }
