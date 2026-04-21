@@ -181,11 +181,11 @@ fun AppNavHost() {
 
 private val navItemColors
     @Composable get() = NavigationBarItemDefaults.colors(
-        selectedIconColor   = MaterialTheme.colorScheme.primary,   // lime
-        selectedTextColor   = MaterialTheme.colorScheme.primary,   // lime
+        selectedIconColor   = MaterialTheme.colorScheme.onPrimary,
+        selectedTextColor   = MaterialTheme.colorScheme.primary,
         unselectedIconColor = PlazoMuted,
         unselectedTextColor = PlazoMuted,
-        indicatorColor      = Color.Transparent
+        indicatorColor      = MaterialTheme.colorScheme.primary
     )
 
 @Composable

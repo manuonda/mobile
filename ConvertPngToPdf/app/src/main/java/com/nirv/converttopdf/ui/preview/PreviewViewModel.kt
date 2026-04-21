@@ -40,11 +40,15 @@ class PreviewViewModel(
     private val _shareState   = MutableStateFlow<ShareState>(ShareState.Idle)
     val shareState: StateFlow<ShareState> = _shareState.asStateFlow()
 
+    private val _isLoading = MutableStateFlow(true)
+    val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
+
     init { loadDocument() }
 
     private fun loadDocument() {
         Log.d(TAG, "loadDocument: iniciando carga para documentId=$documentId")
         viewModelScope.launch(Dispatchers.IO) {
+            _isLoading.value = true
             val doc = documentRepository.getDocumentById(documentId)
             Log.d(TAG, "loadDocument: doc=$doc")
             doc?.let { _documentName.value = it.name }
@@ -56,6 +60,7 @@ class PreviewViewModel(
             imageRepository.clear()
             bitmaps.forEach { imageRepository.addImage(it) }
             Log.d(TAG, "loadDocument: imageRepository sincronizado")
+            _isLoading.value = false
         }
         viewModelScope.launch {
             documentRepository.allDocuments.collect { docs ->

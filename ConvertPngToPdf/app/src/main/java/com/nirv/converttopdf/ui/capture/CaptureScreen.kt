@@ -230,63 +230,75 @@ fun CaptureScreenContent(
                 }
             }
         },
-        bottomBar = {
-            if (selectedUris.isNotEmpty()) {
-                Box(
+    ) { padding ->
+        Box(modifier = Modifier.fillMaxSize()) {
+            when {
+                !permissionGranted -> PermissionPrompt(permissionRationale, onRequestPermission, Modifier
+                    .fillMaxSize()
+                    .padding(padding))
+
+                isGalleryLoading -> {
+                    Box(modifier = Modifier
+                        .fillMaxSize()
+                        .padding(padding), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(strokeWidth = 3.dp)
+                    }
+                }
+
+                galleryUris.isEmpty() -> Box(Modifier
+                    .fillMaxSize()
+                    .padding(padding), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("No se encontraron imágenes", style = MaterialTheme.typography.titleMedium)
+                        Spacer(Modifier.height(8.dp))
+                        Text("Usa el icono de cámara para escanear", style = MaterialTheme.typography.bodyMedium, color = PlazoMuted)
+                    }
+                }
+                else -> LazyVerticalGrid(
+                    columns = GridCells.Fixed(3),
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.surface)
-                        .padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 20.dp)
-                        .navigationBarsPadding()
+                        .fillMaxSize()
+                        .padding(padding),
+                    contentPadding = PaddingValues(2.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
-                    val label = if (isAddingToExisting) "Añadir a documento" else "Siguiente (${selectedUris.size})"
-                    Button(
-                        onClick  = onConfirm,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(56.dp),
-                        colors   = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                        shape    = RoundedCornerShape(12.dp)
-                    ) {
-                        Text(label, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    items(galleryUris) { uri ->
+                        GalleryItem(uri, uri in selectedUris) { onToggleSelect(uri) }
                     }
                 }
             }
-        }
-    ) { padding ->
-        when {
-            !permissionGranted -> PermissionPrompt(permissionRationale, onRequestPermission, Modifier
-                .fillMaxSize()
-                .padding(padding))
-            
-            isGalleryLoading -> {
-                Box(modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(strokeWidth = 3.dp)
-                }
-            }
 
-            galleryUris.isEmpty() -> Box(Modifier
-                .fillMaxSize()
-                .padding(padding), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("No se encontraron imágenes", style = MaterialTheme.typography.titleMedium)
-                    Spacer(Modifier.height(8.dp))
-                    Text("Usa el icono de cámara para escanear", style = MaterialTheme.typography.bodyMedium, color = PlazoMuted)
-                }
-            }
-            else -> LazyVerticalGrid(
-                columns = GridCells.Fixed(3),
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding),
-                contentPadding = PaddingValues(2.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-                horizontalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
-                items(galleryUris) { uri ->
-                    GalleryItem(uri, uri in selectedUris) { onToggleSelect(uri) }
+            // Floating action bar
+            if (selectedUris.isNotEmpty()) {
+                val countLabel = if (selectedUris.size == 1) "1 imagen seleccionada"
+                                 else "${selectedUris.size} imágenes seleccionadas"
+                val actionLabel = if (isAddingToExisting) "AÑADIR" else "PRÓXIMO"
+                androidx.compose.foundation.layout.Row(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .navigationBarsPadding()
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color(0xFFF0F0F0))
+                        .padding(horizontal = 20.dp, vertical = 18.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = countLabel,
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                    Text(
+                        text = actionLabel,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 16.sp,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.clickable { onConfirm() }
+                    )
                 }
             }
         }
