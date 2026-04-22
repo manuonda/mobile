@@ -359,7 +359,7 @@ fun SignatureScreenContent(
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun SignatureOverlay(
+internal fun SignatureOverlay(
     placed: PlacedSignature,
     isSelected: Boolean,
     density: Float,

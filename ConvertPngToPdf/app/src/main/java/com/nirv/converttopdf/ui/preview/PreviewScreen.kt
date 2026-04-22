@@ -79,6 +79,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
+import com.nirv.converttopdf.data.db.entity.DocumentPageEntity
 import kotlinx.coroutines.launch
 import com.nirv.converttopdf.ui.theme.PlazoMuted
 import com.nirv.converttopdf.ui.theme.PlazoOlive
@@ -92,6 +93,7 @@ fun PreviewScreen(
     onBack: () -> Unit,
     onAddMore: () -> Unit,
     onSign: () -> Unit,
+    onEditPage: (pageId: Long, imagePath: String) -> Unit = { _, _ -> },
     viewModel: PreviewViewModel = koinViewModel(
         key        = "preview_$documentId",
         parameters = { parametersOf(documentId) }
@@ -101,16 +103,19 @@ fun PreviewScreen(
     val shareState   by viewModel.shareState.collectAsStateWithLifecycle()
     val documentName by viewModel.documentName.collectAsStateWithLifecycle()
     val isLoading    by viewModel.isLoading.collectAsStateWithLifecycle()
+    val pageVersions by viewModel.pageVersions.collectAsStateWithLifecycle()
 
     PreviewScreenContent(
         pages             = pages,
         shareState        = shareState,
         documentTitle     = documentName,
         isLoading         = isLoading,
+        pageVersions      = pageVersions,
         onBack            = onBack,
         onAddMore         = onAddMore,
         onSign            = onSign,
-        onDeletePage      = { viewModel.removePage(it) },
+        onEditPage        = onEditPage,
+        onDeletePage      = { page -> viewModel.removePage(page)},
         onShare           = { viewModel.shareAsPdf() },
         onResetShareState = { viewModel.resetShareState() },
         onTitleChange     = { viewModel.renameDocument(it) }
@@ -120,14 +125,16 @@ fun PreviewScreen(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PreviewScreenContent(
-    pages: List<String>,
+    pages: List<DocumentPageEntity>,
     shareState: ShareState,
     documentTitle: String,
     isLoading: Boolean = false,
+    pageVersions: Map<Long, Long> = emptyMap(),
     onBack: () -> Unit,
     onAddMore: () -> Unit,
     onSign: () -> Unit,
-    onDeletePage: (Int) -> Unit,
+    onEditPage: (pageId: Long, imagePath: String) -> Unit = { _, _ -> },
+    onDeletePage: (DocumentPageEntity) -> Unit,
     onShare: () -> Unit,
     onResetShareState: () -> Unit,
     onTitleChange: (String) -> Unit
@@ -323,12 +330,14 @@ fun PreviewScreenContent(
                                 ShimmerCard(brush = shimmerBrush)
                             }
                         } else {
-                            itemsIndexed(pages) { index, path ->
+                            itemsIndexed(pages) { index, page ->
                                 PageCard(
                                     index        = index,
-                                    path         = path,
+                                    path         = page.imagePath,
+                                    version      = pageVersions[page.id] ?: 0L,
                                     shimmerBrush = shimmerBrush,
-                                    onDelete     = { onDeletePage(index) }
+                                    onDelete     = { onDeletePage(page) },
+                                    onEdit       = { onEditPage(page.id, page.imagePath) }
                                 )
                             }
                             item { AddImageCard(onClick = onAddMore) }
@@ -381,20 +390,31 @@ private fun ShimmerCard(brush: Brush) {
 // ─── Celda real: SubcomposeAsyncImage muestra shimmer mientras carga ─────────
 
 @Composable
-private fun PageCard(index: Int, path: String, shimmerBrush: Brush, onDelete: () -> Unit) {
-    val context = LocalContext.current
-    val request = remember(path) {
+private fun PageCard(
+    index: Int,
+    path: String,
+    version: Long = 0L,
+    shimmerBrush: Brush,
+    onDelete: () -> Unit,
+    onEdit: () -> Unit = {}
+) {
+    val context  = LocalContext.current
+    val cacheKey = "$path?v=$version"
+    val request  = remember(cacheKey) {
         ImageRequest.Builder(context)
             .data(File(path))
-            .memoryCacheKey(path)
-            .diskCacheKey(path)
+            .memoryCacheKey(cacheKey)
+            .diskCacheKey(cacheKey)
             .size(600)
             .build()
     }
     Card(
         shape     = RoundedCornerShape(12.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-        modifier  = Modifier.fillMaxWidth().aspectRatio(0.75f)
+        modifier  = Modifier
+            .fillMaxWidth()
+            .aspectRatio(0.75f)
+            .clickable { onEdit() }
     ) {
         Box {
             SubcomposeAsyncImage(

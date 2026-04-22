@@ -4,9 +4,11 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Log
+import androidx.compose.animation.core.withInfiniteAnimationFrameMillis
 import com.nirv.converttopdf.data.db.dao.DocumentDao
 import com.nirv.converttopdf.data.db.entity.DocumentEntity
 import com.nirv.converttopdf.data.db.entity.DocumentPageEntity
+
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -71,6 +73,13 @@ class DocumentRepository(
                  .filter { File(it).exists() }
         }
 
+    // ── Flow reactivo de entidades de página (incluye id, imagePath, pageOrder) ─
+    fun getDocumentPagesFlow(docId: Long): Flow<List<DocumentPageEntity>> =
+        dao.getPagesForDocument(docId).map { pages ->
+            pages.sortedBy { it.pageOrder }
+                 .filter { File(it.imagePath).exists() }
+        }
+
     // ── Cargar rutas de páginas una vez (para usos puntuales) ────────────────
     suspend fun getDocumentPaths(docId: Long): List<String> =
         withContext(Dispatchers.IO) {
@@ -99,19 +108,36 @@ class DocumentRepository(
         }
 
     // ── Eliminar una página (re-ordena las restantes) ─────────────────────────
-    suspend fun deletePage(docId: Long, pageOrder: Int) {
-        Log.d(TAG, "deletePage: docId=$docId, pageOrder=$pageOrder")
-        val pages = dao.getPagesForDocumentOnce(docId)
-        val target = pages.find { it.pageOrder == pageOrder } ?: run {
-            Log.w(TAG, "deletePage: no se encontró página con order=$pageOrder")
-            return
+    suspend fun deletePage(page: DocumentPageEntity) = withContext(Dispatchers.IO) {
+
+        try {
+            Log.d(TAG, "deletePage: idDocumentPage=${page.id}")
+            // delete files
+            val file = File(page.imagePath)
+            if (file.exists()) {
+                val deleted = file.delete()
+                Log.d(TAG, "deletePage: archivo borrado=$deleted")
+            }
+            // delete db entry
+            dao.deletePageById(page.id)
+
+            // obtener pages restantes para ordenar
+            val remainingPages = dao.getPagesForDocumentOnce(page.documentId)
+            remainingPages
+                .filter { it.pageOrder > page.pageOrder }
+                .forEach { item ->
+                    dao.updatePageOrder(item.id, item.pageOrder - 1)
+                }
+
+            // actualizar el contador global del documento
+            dao.updatePageCount(page.documentId, remainingPages.size)
+            Log.d(TAG,"dletePage: Proceso completado correctamente")
+
+        }catch (e : Exception) {
+          Log.e(TAG, "deletePage: Error al eliminar página", e)
+            throw e
         }
-        File(target.imagePath).delete()
-        dao.deletePage(docId, pageOrder)
-        pages.filter { it.pageOrder > pageOrder }
-            .forEach { dao.updatePageOrder(it.id, it.pageOrder - 1) }
-        dao.updatePageCount(docId, (pages.size - 1).coerceAtLeast(0))
-        Log.d(TAG, "deletePage: completado, páginas restantes=${(pages.size - 1).coerceAtLeast(0)}")
+
     }
 
     // ── Renombrar documento ───────────────────────────────────────────────────

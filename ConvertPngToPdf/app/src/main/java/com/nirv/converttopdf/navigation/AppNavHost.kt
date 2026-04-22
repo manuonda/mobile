@@ -47,9 +47,13 @@ import com.nirv.converttopdf.ui.files.DirectryFileScreen
 import com.nirv.converttopdf.ui.home.HomeScreen
 import com.nirv.converttopdf.ui.preview.PreviewScreen
 import com.nirv.converttopdf.ui.settings.SettingsScreen
+import com.nirv.converttopdf.ui.imageedit.ImageEditScreen
+import com.nirv.converttopdf.ui.preview.PreviewViewModel
 import com.nirv.converttopdf.ui.signature.DrawSignatureScreen
 import com.nirv.converttopdf.ui.signature.SignatureScreen
 import com.nirv.converttopdf.ui.theme.PlazoMuted
+import org.koin.androidx.compose.koinViewModel
+import org.koin.core.parameter.parametersOf
 
 // Tabs that show the bottom navigation bar
 private fun isMainTab(dest: Any?): Boolean =
@@ -160,11 +164,35 @@ fun AppNavHost() {
                         }
 
                         is Preview -> NavEntry(key = key) {
+                            val previewVm: PreviewViewModel = koinViewModel(
+                                key        = "preview_${key.documentId}",
+                                parameters = { parametersOf(key.documentId) }
+                            )
                             PreviewScreen(
                                 documentId = key.documentId,
+                                viewModel  = previewVm,
                                 onBack     = { backStack.removeLastOrNull() },
                                 onAddMore  = { backStack.add(Capture(documentId = key.documentId)) },
-                                onSign     = { backStack.add(Sign) }
+                                onSign     = { backStack.add(Sign) },
+                                onEditPage = { pageId, imagePath ->
+                                    backStack.add(ImageEdit(pageId = pageId, imagePath = imagePath, documentId = key.documentId))
+                                }
+                            )
+                        }
+
+                        is ImageEdit -> NavEntry(key = key) {
+                            val previewVm: PreviewViewModel = koinViewModel(
+                                key        = "preview_${key.documentId}",
+                                parameters = { parametersOf(key.documentId) }
+                            )
+                            ImageEditScreen(
+                                pageId    = key.pageId,
+                                imagePath = key.imagePath,
+                                onBack    = {
+                                    previewVm.notifyPageEdited(key.pageId)
+                                    backStack.removeLastOrNull()
+                                },
+                                onDrawNew = { backStack.add(DrawSign) }
                             )
                         }
 

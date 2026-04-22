@@ -4,6 +4,7 @@ import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.nirv.converttopdf.data.db.entity.DocumentPageEntity
 import com.nirv.converttopdf.data.repository.DocumentRepository
 import com.nirv.converttopdf.domain.usecase.ExportToPdfUseCase
 import kotlinx.coroutines.Dispatchers
@@ -27,16 +28,17 @@ class PreviewViewModel(
     private val exportToPdfUseCase: ExportToPdfUseCase
 ) : ViewModel() {
 
-    private val _pages        = MutableStateFlow<List<String>>(emptyList())
-    val pages: StateFlow<List<String>> = _pages.asStateFlow()
+    // Expone entidades completas: cada página tiene id, imagePath, pageOrder
+    private val _pages = MutableStateFlow<List<DocumentPageEntity>>(emptyList())
+    val pages: StateFlow<List<DocumentPageEntity>> = _pages.asStateFlow()
 
     private val _documentName = MutableStateFlow("")
     val documentName: StateFlow<String> = _documentName.asStateFlow()
 
-    private val _shareState   = MutableStateFlow<ShareState>(ShareState.Idle)
+    private val _shareState = MutableStateFlow<ShareState>(ShareState.Idle)
     val shareState: StateFlow<ShareState> = _shareState.asStateFlow()
 
-    private val _isLoading    = MutableStateFlow(true)
+    private val _isLoading = MutableStateFlow(true)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
     init {
@@ -46,9 +48,9 @@ class PreviewViewModel(
 
     private fun observePages() {
         viewModelScope.launch(Dispatchers.IO) {
-            documentRepository.getDocumentPathsFlow(documentId).collect { paths ->
-                Log.d(TAG, "observePages: ${paths.size} páginas")
-                _pages.value = paths
+            documentRepository.getDocumentPagesFlow(documentId).collect { pages ->
+                Log.d(TAG, "observePages: ${pages.size} páginas")
+                _pages.value = pages
                 _isLoading.value = false
             }
         }
@@ -62,11 +64,10 @@ class PreviewViewModel(
         }
     }
 
-    fun removePage(index: Int) {
-        Log.d(TAG, "removePage: index=$index")
+    fun removePage(page: DocumentPageEntity) {
+        Log.d(TAG, "removePage: idPage ${page.id}")
         viewModelScope.launch(Dispatchers.IO) {
-            documentRepository.deletePage(documentId, index)
-            // Room Flow emite automáticamente tras el delete — no hace falta recargar manualmente
+            documentRepository.deletePage(page)
         }
     }
 
@@ -78,7 +79,7 @@ class PreviewViewModel(
     }
 
     fun shareAsPdf() {
-        val paths = _pages.value
+        val paths = _pages.value.map { it.imagePath }
         if (paths.isEmpty()) return
         Log.d(TAG, "shareAsPdf: ${paths.size} páginas")
         viewModelScope.launch {
@@ -97,5 +98,12 @@ class PreviewViewModel(
 
     fun resetShareState() {
         _shareState.value = ShareState.Idle
+    }
+
+    private val _pageVersions = MutableStateFlow<Map<Long, Long>>(emptyMap())
+    val pageVersions: StateFlow<Map<Long, Long>> = _pageVersions.asStateFlow()
+
+    fun notifyPageEdited(pageId: Long) {
+        _pageVersions.value = _pageVersions.value + (pageId to System.currentTimeMillis())
     }
 }

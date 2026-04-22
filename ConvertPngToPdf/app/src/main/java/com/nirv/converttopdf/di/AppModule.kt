@@ -12,6 +12,7 @@ import com.nirv.converttopdf.ui.export.ExportViewModel
 import com.nirv.converttopdf.ui.files.DirectoryViewModel
 import com.nirv.converttopdf.ui.home.HomeViewModel
 import com.nirv.converttopdf.ui.preview.PreviewViewModel
+import com.nirv.converttopdf.ui.imageedit.ImageEditViewModel
 import com.nirv.converttopdf.ui.signature.DrawSignatureViewModel
 import com.nirv.converttopdf.ui.signature.SignatureViewModel
 import org.koin.android.ext.koin.androidApplication
@@ -39,5 +40,6 @@ val appModule = module {
     viewModel { ExportViewModel(androidApplication(), get(), get()) }
     viewModel { SignatureViewModel(get(), get()) }
     viewModel { DrawSignatureViewModel(get()) }
+    viewModel { (pageId: Long, imagePath: String) -> ImageEditViewModel(pageId, imagePath, get()) }
     viewModel { DirectoryViewModel(get()) }
 }

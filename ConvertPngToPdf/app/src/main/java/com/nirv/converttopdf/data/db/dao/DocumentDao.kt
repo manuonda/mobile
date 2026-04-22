@@ -29,8 +29,8 @@ interface DocumentDao {
     @Query("DELETE FROM documents WHERE id = :docId")
     suspend fun deleteDocumentById(docId: Long)
 
-    @Query("DELETE FROM document_pages WHERE documentId = :docId AND pageOrder = :pageOrder")
-    suspend fun deletePage(docId: Long, pageOrder: Int)
+    @Query("DELETE FROM document_pages where id = :pageId")
+    suspend fun deletePageById(pageId: Long)
 
     @Query("UPDATE documents SET name = :name WHERE id = :docId")
     suspend fun renameDocument(docId: Long, name: String)
