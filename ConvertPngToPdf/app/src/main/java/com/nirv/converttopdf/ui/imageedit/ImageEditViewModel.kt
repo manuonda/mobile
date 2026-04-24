@@ -3,6 +3,8 @@ package com.nirv.converttopdf.ui.imageedit
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.PorterDuff
@@ -14,14 +16,85 @@ import androidx.compose.ui.unit.IntSize
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nirv.converttopdf.data.SignatureRepository
+import com.nirv.converttopdf.data.db.entity.DocumentPageEntity
 import com.nirv.converttopdf.ui.signature.PlacedSignature
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.SharingStarted
 import java.io.File
+
+enum class ImageFilter(val label: String) {
+    ORIGINAL("Original"),
+    VINTAGE("Vintage"),
+    VIVID("Vívido"),
+    MONO("Mono"),
+    ENHANCE("Mejorar"),
+    COLD("Frío")
+}
+
+fun ImageFilter.toComposeColorFilter(): androidx.compose.ui.graphics.ColorFilter? = when (this) {
+    ImageFilter.ORIGINAL -> null
+    ImageFilter.VINTAGE  -> androidx.compose.ui.graphics.ColorFilter.colorMatrix(
+        androidx.compose.ui.graphics.ColorMatrix(floatArrayOf(
+            0.9f, 0.05f, 0.05f, 0f, 0.08f,
+            0.05f, 0.8f, 0.05f, 0f, 0.04f,
+            0f,   0f,   0.6f,  0f,  0f,
+            0f,   0f,   0f,    1f,  0f
+        ))
+    )
+    ImageFilter.VIVID    -> androidx.compose.ui.graphics.ColorFilter.colorMatrix(
+        androidx.compose.ui.graphics.ColorMatrix().apply { setToSaturation(2.2f) }
+    )
+    ImageFilter.MONO     -> androidx.compose.ui.graphics.ColorFilter.colorMatrix(
+        androidx.compose.ui.graphics.ColorMatrix().apply { setToSaturation(0f) }
+    )
+    ImageFilter.ENHANCE  -> androidx.compose.ui.graphics.ColorFilter.colorMatrix(
+        androidx.compose.ui.graphics.ColorMatrix(floatArrayOf(
+            1.2f, 0f,   0f,   0f, 0.04f,
+            0f,   1.2f, 0f,   0f, 0.04f,
+            0f,   0f,   1.2f, 0f, 0.04f,
+            0f,   0f,   0f,   1f,  0f
+        ))
+    )
+    ImageFilter.COLD     -> androidx.compose.ui.graphics.ColorFilter.colorMatrix(
+        androidx.compose.ui.graphics.ColorMatrix(floatArrayOf(
+            0.85f, 0f,    0f,    0f,  0f,
+            0f,    0.9f,  0f,    0f,  0f,
+            0f,    0f,    1.25f, 0f,  0.08f,
+            0f,    0f,    0f,    1f,  0f
+        ))
+    )
+}
+
+fun ImageFilter.toAndroidColorFilter(): ColorMatrixColorFilter? = when (this) {
+    ImageFilter.ORIGINAL -> null
+    ImageFilter.VINTAGE  -> ColorMatrixColorFilter(ColorMatrix(floatArrayOf(
+        0.9f, 0.05f, 0.05f, 0f, 20f,
+        0.05f, 0.8f, 0.05f, 0f, 10f,
+        0f,   0f,   0.6f,  0f,  0f,
+        0f,   0f,   0f,    1f,  0f
+    )))
+    ImageFilter.VIVID    -> ColorMatrixColorFilter(ColorMatrix().apply { setSaturation(2.2f) })
+    ImageFilter.MONO     -> ColorMatrixColorFilter(ColorMatrix().apply { setSaturation(0f) })
+    ImageFilter.ENHANCE  -> ColorMatrixColorFilter(ColorMatrix(floatArrayOf(
+        1.2f, 0f,   0f,   0f, 10f,
+        0f,   1.2f, 0f,   0f, 10f,
+        0f,   0f,   1.2f, 0f, 10f,
+        0f,   0f,   0f,   1f,  0f
+    )))
+    ImageFilter.COLD     -> ColorMatrixColorFilter(ColorMatrix(floatArrayOf(
+        0.85f, 0f,    0f,    0f,  0f,
+        0f,    0.9f,  0f,    0f,  0f,
+        0f,    0f,    1.25f, 0f, 20f,
+        0f,    0f,    0f,    1f,  0f
+    )))
+}
 
 private const val TAG = "ImageEditVM"
 
@@ -35,8 +108,9 @@ data class PlacedText(
 )
 
 class ImageEditViewModel(
-    val pageId: Long,       // id único de DocumentPageEntity
-    val imagePath: String,  // path en disco — directo, sin consultar DB
+    val initialPageId: Long,
+    val initialImagePath: String,
+    val allPages: List<DocumentPageEntity>,
     private val signatureRepository: SignatureRepository
 ) : ViewModel() {
 
@@ -58,9 +132,94 @@ class ImageEditViewModel(
     private var nextTextId = 0
     private var lastAutoPlacedCount = signatureRepository.signatures.value.size
 
+    private val _currentIndex = MutableStateFlow(allPages.indexOfFirst { it.id == initialPageId }.coerceAtLeast(0))
+    val currentIndex: StateFlow<Int> = _currentIndex.asStateFlow()
+
+    // Reactive current page properties
+    val currentImagePath: StateFlow<String> = _currentIndex.map { index ->
+        allPages.getOrNull(index)?.imagePath ?: initialImagePath
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, initialImagePath)
+
+    val currentPageId: StateFlow<Long> = _currentIndex.map { index ->
+        allPages.getOrNull(index)?.id ?: initialPageId
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, initialPageId)
+
+    val totalPages: Int get() = allPages.size
+
+    private val _imageVersion = MutableStateFlow(0L)
+    val imageVersion: StateFlow<Long> = _imageVersion.asStateFlow()
+
     init {
-        Log.d(TAG, "init: pageId=$pageId, imagePath=$imagePath")
-        Log.d(TAG, "File exists=${File(imagePath).exists()}, size=${File(imagePath).length()} bytes")
+        Log.d(TAG, "init: initialPageId=$initialPageId, totalPages=${allPages.size}")
+        viewModelScope.launch(Dispatchers.IO) {
+            val backup = File("$initialImagePath.bak")
+            if (!backup.exists()) {
+                File(initialImagePath).copyTo(backup, overwrite = false)
+            }
+        }
+    }
+
+    fun resetToOriginal() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val backup = File("$initialImagePath.bak")
+            if (backup.exists()) {
+                backup.copyTo(File(currentImagePath.value), overwrite = true)
+                withContext(Dispatchers.Main) { _imageVersion.value++ }
+            }
+        }
+    }
+
+    fun rotateImage(degrees: Float) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val path = currentImagePath.value
+            val bmp = BitmapFactory.decodeFile(path) ?: return@launch
+            val matrix = Matrix().apply { postRotate(degrees) }
+            val rotated = Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, matrix, true)
+            File(path).outputStream().use { rotated.compress(Bitmap.CompressFormat.JPEG, 92, it) }
+            withContext(Dispatchers.Main) { _imageVersion.value++ }
+        }
+    }
+
+    fun flipImage(horizontal: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val path = currentImagePath.value
+            val bmp = BitmapFactory.decodeFile(path) ?: return@launch
+            val matrix = Matrix().apply {
+                if (horizontal) postScale(-1f, 1f, bmp.width / 2f, bmp.height / 2f)
+                else postScale(1f, -1f, bmp.width / 2f, bmp.height / 2f)
+            }
+            val flipped = Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, matrix, true)
+            File(path).outputStream().use { flipped.compress(Bitmap.CompressFormat.JPEG, 92, it) }
+            withContext(Dispatchers.Main) { _imageVersion.value++ }
+        }
+    }
+
+    fun applyFilterAndSave(filter: ImageFilter) {
+        if (filter == ImageFilter.ORIGINAL) {
+            _imageVersion.value++
+            return
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            val path = currentImagePath.value
+            val original = BitmapFactory.decodeFile(path) ?: return@launch
+            val result = original.copy(Bitmap.Config.ARGB_8888, true)
+            val canvas = Canvas(result)
+            val paint = Paint().apply { colorFilter = filter.toAndroidColorFilter() }
+            canvas.drawBitmap(original, 0f, 0f, paint)
+            File(path).outputStream().use { result.compress(Bitmap.CompressFormat.JPEG, 92, it) }
+            withContext(Dispatchers.Main) { _imageVersion.value++ }
+        }
+    }
+
+    fun goToPage(index: Int) {
+        if (index in allPages.indices && index != _currentIndex.value) {
+            _currentIndex.value = index
+            // Clear edits when changing pages to avoid carrying over firmas/textos to other images
+            _placedSignatures.value = emptyList()
+            _placedTexts.value = emptyList()
+            _selectedSignatureId.value = null
+            _selectedTextId.value = null
+        }
     }
 
     fun checkAndAutoPlaceNewSignature() {
@@ -163,10 +322,11 @@ class ImageEditViewModel(
     }
 
     fun confirmAndSave(imageDisplaySize: IntSize, screenDensity: Float, onDone: () -> Unit) {
-        Log.d(TAG, "confirmAndSave: pageId=$pageId, path=$imagePath, displaySize=$imageDisplaySize")
+        val path = currentImagePath.value
+        Log.d(TAG, "confirmAndSave: path=$path, displaySize=$imageDisplaySize")
         viewModelScope.launch(Dispatchers.IO) {
-            val original = BitmapFactory.decodeFile(imagePath) ?: run {
-                Log.e(TAG, "confirmAndSave: no se pudo decodificar $imagePath")
+            val original = BitmapFactory.decodeFile(path) ?: run {
+                Log.e(TAG, "confirmAndSave: no se pudo decodificar $path")
                 return@launch
             }
             Log.d(TAG, "confirmAndSave: original ${original.width}x${original.height}")
@@ -218,10 +378,10 @@ class ImageEditViewModel(
                 )
             }
 
-            File(imagePath).outputStream().use { out ->
+            File(path).outputStream().use { out ->
                 result.compress(Bitmap.CompressFormat.JPEG, 92, out)
             }
-            Log.d(TAG, "confirmAndSave: guardado en $imagePath")
+            Log.d(TAG, "confirmAndSave: guardado en $path")
 
             withContext(Dispatchers.Main) { onDone() }
         }

@@ -5,7 +5,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
@@ -13,48 +14,39 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.animateScrollBy
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.RotateLeft
+import androidx.compose.material.icons.automirrored.filled.RotateRight
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ColorLens
 import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.automirrored.filled.RotateLeft
-import androidx.compose.material.icons.automirrored.filled.RotateRight
 import androidx.compose.material.icons.filled.Flip
 import androidx.compose.material.icons.filled.Gesture
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -78,8 +70,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
@@ -101,62 +96,45 @@ import org.koin.core.parameter.parametersOf
 import java.io.File
 import kotlin.math.roundToInt
 
-private const val TAG = "ImageEditScreen"
+private const val PTAG = "PageToolEdit"
 
 @Composable
-fun ImageEditScreen(
+fun PageToolEditScreen(
     pageId: Long,
     imagePath: String,
-    allPagesFlow: kotlinx.coroutines.flow.StateFlow<List<com.nirv.converttopdf.data.db.entity.DocumentPageEntity>>? = null,
+    initialTool: String = "",
     onBack: () -> Unit,
     onDrawNew: () -> Unit,
-    onPageNavigate: ((pageId: Long, imagePath: String) -> Unit)? = null,
-    onToolSelected: (tool: String) -> Unit = {},
     viewModel: ImageEditViewModel = koinViewModel(
         key        = "image_edit_$pageId",
-        parameters = { parametersOf(pageId, imagePath, allPagesFlow?.value ?: emptyList<com.nirv.converttopdf.data.db.entity.DocumentPageEntity>()) }
+        parameters = { parametersOf(pageId, imagePath, emptyList<com.nirv.converttopdf.data.db.entity.DocumentPageEntity>()) }
     )
 ) {
     val currentImagePath by viewModel.currentImagePath.collectAsStateWithLifecycle()
+    val imageVersion     by viewModel.imageVersion.collectAsStateWithLifecycle()
     val savedSignatures  by viewModel.savedSignatures.collectAsStateWithLifecycle()
     val placedSignatures by viewModel.placedSignatures.collectAsStateWithLifecycle()
     val placedTexts      by viewModel.placedTexts.collectAsStateWithLifecycle()
     val selectedSigId    by viewModel.selectedSignatureId.collectAsStateWithLifecycle()
     val selectedTextId   by viewModel.selectedTextId.collectAsStateWithLifecycle()
-    val currentIndex     by viewModel.currentIndex.collectAsStateWithLifecycle()
-    val imageVersion     by viewModel.imageVersion.collectAsStateWithLifecycle()
     val context          = LocalContext.current
     val density          = LocalDensity.current.density
 
-    val allPages by (allPagesFlow ?: kotlinx.coroutines.flow.flowOf(emptyList())).collectAsStateWithLifecycle(initialValue = emptyList())
-
-    // para que son estas variables
-    var showSignatureSheet  by remember { mutableStateOf(false) }
+    var activeTool         by remember { mutableStateOf(initialTool) }
+    var showSignatureSheet  by remember { mutableStateOf(activeTool == "signature") }
     var showAddOptionsSheet by remember { mutableStateOf(false) }
     var showEditSigPanel    by remember { mutableStateOf(false) }
-    var showTextDialog      by remember { mutableStateOf(false) }
+    var showTextDialog      by remember { mutableStateOf(activeTool == "text") }
     var showEditTextDialog  by remember { mutableStateOf<Int?>(null) }
     var strokeWidth         by remember { mutableFloatStateOf(0.4f) }
     var imageDisplaySize    by remember { mutableStateOf(IntSize.Zero) }
-    var carouselState = rememberLazyListState();
 
-    // Efecto
-    LaunchedEffect(currentIndex) {
-        if (currentIndex >= 0 && currentIndex < allPages.size) {
-            carouselState.animateScrollToItem(currentIndex)
-        }
-    }
-
-    LaunchedEffect(currentImagePath) {
-        Log.d(TAG, "ImageEditScreen: currentImagePath=$currentImagePath")
+    LaunchedEffect(selectedSigId) {
+        if (selectedSigId == null) showEditSigPanel = false
     }
 
     LaunchedEffect(savedSignatures) {
         viewModel.checkAndAutoPlaceNewSignature()
-    }
-
-    LaunchedEffect(selectedSigId) {
-        if (selectedSigId == null) showEditSigPanel = false
     }
 
     val galleryLauncher = rememberLauncherForActivityResult(
@@ -169,11 +147,11 @@ fun ImageEditScreen(
         }
     }
 
-    // Text input dialog — add new text
+    // Diálogo: agregar texto
     if (showTextDialog) {
         var textInput by remember { mutableStateOf("") }
         AlertDialog(
-            onDismissRequest = { showTextDialog = false; textInput = "" },
+            onDismissRequest = { showTextDialog = false; activeTool = "" },
             title   = { Text("Agregar texto", fontWeight = FontWeight.Bold) },
             text    = {
                 OutlinedTextField(
@@ -185,19 +163,19 @@ fun ImageEditScreen(
                 )
             },
             dismissButton = {
-                TextButton(onClick = { showTextDialog = false; textInput = "" }) { Text("Cancelar") }
+                TextButton(onClick = { showTextDialog = false; activeTool = "" }) { Text("Cancelar") }
             },
             confirmButton = {
                 TextButton(onClick = {
                     viewModel.placeText(textInput.trim())
                     showTextDialog = false
-                    textInput = ""
+                    activeTool = ""
                 }) { Text("Agregar") }
             }
         )
     }
 
-    // Text edit dialog — modify existing text
+    // Diálogo: editar texto existente
     showEditTextDialog?.let { editId ->
         val placed = placedTexts.firstOrNull { it.id == editId }
         if (placed != null) {
@@ -231,7 +209,7 @@ fun ImageEditScreen(
         topBar = {
             Column(
                 modifier = Modifier
-                    .background(MaterialTheme.colorScheme.surface)
+                    .background(Color(0xFF1A1C1E))
                     .statusBarsPadding()
             ) {
                 Row(
@@ -242,22 +220,27 @@ fun ImageEditScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(onClick = onBack, modifier = Modifier.size(40.dp)) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver",
-                            modifier = Modifier.size(22.dp))
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Volver",
+                            tint = Color.White,
+                            modifier = Modifier.size(22.dp)
+                        )
                     }
                     Text(
-                        text = "Editar página",
+                        text = "Editar imagen",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
+                        color = Color.White,
                         modifier = Modifier
                             .weight(1f)
                             .padding(start = 4.dp)
                     )
+                    TextButton(onClick = { viewModel.resetToOriginal() }) {
+                        Text("Reiniciar", color = Color(0xFF9E9E9E))
+                    }
                 }
-                HorizontalDivider(
-                    color     = MaterialTheme.colorScheme.outline,
-                    thickness = 0.5.dp
-                )
+                HorizontalDivider(color = Color.DarkGray.copy(alpha = 0.4f), thickness = 0.5.dp)
             }
         },
         bottomBar = {
@@ -268,60 +251,42 @@ fun ImageEditScreen(
             ) {
                 HorizontalDivider(color = Color.DarkGray.copy(alpha = 0.5f), thickness = 0.5.dp)
 
-                // --- CARRUSEL DE PÁGINAS ---
-                if (allPages.isNotEmpty()) {
-                    LazyRow(
-                        state                 = carouselState,
-                        contentPadding        = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        modifier              = Modifier.fillMaxWidth()
-                    ) {
-                        itemsIndexed(allPages) { index, page ->
-                            val isSelected = index == currentIndex
-                            Box(
-                                modifier = Modifier
-                                    .width(65.dp)
-                                    .aspectRatio(3f / 4f)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .border(
-                                        width = if (isSelected) 2.dp else 1.dp,
-                                        color = if (isSelected) Color(0xFF5D71F4) else Color(0xFF3E4146),
-                                        shape = RoundedCornerShape(8.dp)
-                                    )
-                                    .clickable { if (!isSelected) viewModel.goToPage(index) }
-                            ) {
-                                SubcomposeAsyncImage(
-                                    model              = File(page.imagePath),
-                                    contentDescription = null,
-                                    modifier           = Modifier.fillMaxSize(),
-                                    contentScale       = ContentScale.Crop
-                                )
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .align(Alignment.BottomCenter)
-                                        .background(if (isSelected) Color(0xFF5D71F4) else Color(0xCC000000))
-                                        .padding(vertical = 2.dp)
-                                ) {
-                                    Text(
-                                        text      = "${index + 1}",
-                                        color     = Color.White,
-                                        fontSize  = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                                        modifier  = Modifier.fillMaxWidth()
-                                    )
-                                }
-                            }
-                        }
-                    }
+                // Panel de herramienta activa
+                AnimatedVisibility(
+                    visible = activeTool == "crop",
+                    enter   = slideInVertically(initialOffsetY = { it }),
+                    exit    = slideOutVertically(targetOffsetY = { it })
+                ) {
+                    CropActionsPanel(
+                        onRotateLeft  = { viewModel.rotateImage(-90f) },
+                        onRotateRight = { viewModel.rotateImage(90f) },
+                        onFlipH       = { viewModel.flipImage(horizontal = true) },
+                        onFlipV       = { viewModel.flipImage(horizontal = false) },
+                        onClose       = { activeTool = "" }
+                    )
                 }
 
-                // --- BARRA DE HERRAMIENTAS ---
+                AnimatedVisibility(
+                    visible = activeTool == "filter",
+                    enter   = slideInVertically(initialOffsetY = { it }),
+                    exit    = slideOutVertically(targetOffsetY = { it })
+                ) {
+                    FilterPanel(
+                        currentImagePath = currentImagePath,
+                        imageVersion     = imageVersion,
+                        onApply   = { filter ->
+                            viewModel.applyFilterAndSave(filter)
+                            activeTool = ""
+                        },
+                        onDismiss = { activeTool = "" }
+                    )
+                }
+
+                // Barra de herramientas
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 8.dp, end = 16.dp, bottom = 12.dp),
+                        .padding(start = 8.dp, end = 16.dp, bottom = 12.dp, top = 8.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment     = Alignment.CenterVertically
                 ) {
@@ -329,11 +294,38 @@ fun ImageEditScreen(
                         modifier              = Modifier.weight(1f),
                         horizontalArrangement = Arrangement.SpaceEvenly
                     ) {
-                        EditActionButton(Icons.Default.Crop,       "Cultivos") { onToolSelected("crop") }
-                        EditActionButton(Icons.Default.Gesture,    "Garabato") { onToolSelected("signature") }
-                        EditActionButton(Icons.Default.ColorLens,  "Filtro")   { onToolSelected("filter") }
-                        EditActionButton(Icons.Default.TextFields, "Texto")    { onToolSelected("text") }
+                        ToolButton(
+                            icon     = Icons.Default.Crop,
+                            label    = "Cultivos",
+                            isActive = activeTool == "crop",
+                            onClick  = { activeTool = if (activeTool == "crop") "" else "crop" }
+                        )
+                        ToolButton(
+                            icon     = Icons.Default.Gesture,
+                            label    = "Garabato",
+                            isActive = activeTool == "signature",
+                            onClick  = {
+                                activeTool = "signature"
+                                showSignatureSheet = true
+                            }
+                        )
+                        ToolButton(
+                            icon     = Icons.Default.ColorLens,
+                            label    = "Filtro",
+                            isActive = activeTool == "filter",
+                            onClick  = { activeTool = if (activeTool == "filter") "" else "filter" }
+                        )
+                        ToolButton(
+                            icon     = Icons.Default.TextFields,
+                            label    = "Texto",
+                            isActive = activeTool == "text",
+                            onClick  = {
+                                activeTool = "text"
+                                showTextDialog = true
+                            }
+                        )
                     }
+
                     IconButton(
                         onClick  = { viewModel.confirmAndSave(imageDisplaySize, density) { onBack() } },
                         modifier = Modifier
@@ -341,30 +333,29 @@ fun ImageEditScreen(
                             .clip(CircleShape)
                             .background(Color(0xFF5D71F4))
                     ) {
-                        Icon(Icons.Default.Check, "Confirmar", tint = Color.White, modifier = Modifier.size(28.dp))
+                        Icon(Icons.Default.Check, "Guardar", tint = Color.White, modifier = Modifier.size(28.dp))
                     }
                 }
             }
         }
-
     ) { padding ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .background(Color.Black)
                 .padding(padding)
                 .pointerInput(Unit) { detectTapGestures { viewModel.deselectAll() } }
         ) {
+            // Imagen a pantalla completa (ContentScale.Fit para ver todo)
             AnimatedContent(
-                targetState = currentImagePath,
-                transitionSpec = {
-                    slideInHorizontally { it } togetherWith slideOutHorizontally { -it }
-                },
-                label = "page_transition"
-            ) { imagePath ->
-                val cacheKey = "$imagePath?v=$imageVersion"
+                targetState  = currentImagePath,
+                transitionSpec = { fadeIn() togetherWith fadeOut() },
+                label        = "tool_image_transition"
+            ) { imgPath ->
+                val cacheKey = "$imgPath?v=$imageVersion"
                 val request = remember(cacheKey) {
                     ImageRequest.Builder(context)
-                        .data(File(imagePath))
+                        .data(File(imgPath))
                         .memoryCacheKey(cacheKey)
                         .diskCacheKey(cacheKey)
                         .build()
@@ -373,37 +364,25 @@ fun ImageEditScreen(
                     model              = request,
                     contentDescription = "Página",
                     modifier           = Modifier
-                        .fillMaxWidth()
+                        .fillMaxSize()
                         .onGloballyPositioned { coords ->
                             if (imageDisplaySize != coords.size) {
                                 imageDisplaySize = coords.size
-                                Log.d(TAG, "imageDisplaySize updated → ${coords.size}")
+                                Log.d(PTAG, "imageDisplaySize → ${coords.size}")
                             }
                         },
-                    contentScale = ContentScale.FillWidth,
+                    contentScale = ContentScale.Fit,
                     loading = {
                         Box(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .height(300.dp)
-                                .background(MaterialTheme.colorScheme.surfaceVariant)
+                                .fillMaxSize()
+                                .background(Color(0xFF2A2A2A))
                         )
-                    },
-                    error = {
-                        Log.e(TAG, "Coil error loading: $imagePath")
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(300.dp)
-                                .background(MaterialTheme.colorScheme.errorContainer),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text("No se pudo cargar la imagen", color = MaterialTheme.colorScheme.error)
-                        }
                     }
                 )
             }
 
+            // Overlays de firma
             placedSignatures.forEach { placed ->
                 SignatureOverlay(
                     placed     = placed,
@@ -418,8 +397,9 @@ fun ImageEditScreen(
                 )
             }
 
+            // Overlays de texto
             placedTexts.forEach { placed ->
-                TextOverlay(
+                ToolTextOverlay(
                     placed     = placed,
                     isSelected = placed.id == selectedTextId,
                     onSelect   = { viewModel.selectText(placed.id) },
@@ -429,6 +409,7 @@ fun ImageEditScreen(
                 )
             }
 
+            // Panel edición de firma seleccionada
             val selectedSig = placedSignatures.firstOrNull { it.id == selectedSigId }
             AnimatedVisibility(
                 visible  = showEditSigPanel && selectedSig != null,
@@ -446,7 +427,6 @@ fun ImageEditScreen(
                     )
                 }
             }
-
         }
 
         if (showSignatureSheet) {
@@ -455,12 +435,16 @@ fun ImageEditScreen(
                 onSignatureSelected = { bmp ->
                     viewModel.placeSignature(bmp)
                     showSignatureSheet = false
+                    activeTool = ""
                 },
                 onAddNew = {
                     showSignatureSheet = false
                     showAddOptionsSheet = true
                 },
-                onDismiss = { showSignatureSheet = false }
+                onDismiss = {
+                    showSignatureSheet = false
+                    activeTool = ""
+                }
             )
         }
 
@@ -482,7 +466,13 @@ fun ImageEditScreen(
 }
 
 @Composable
-private fun EditActionButton(icon: ImageVector, label: String, onClick: () -> Unit) {
+private fun ToolButton(
+    icon: ImageVector,
+    label: String,
+    isActive: Boolean,
+    onClick: () -> Unit
+) {
+    val activeColor = Color(0xFFFFC107)
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
@@ -490,14 +480,24 @@ private fun EditActionButton(icon: ImageVector, label: String, onClick: () -> Un
             .clickable { onClick() }
             .padding(8.dp)
     ) {
-        Icon(icon, contentDescription = label, tint = Color.White, modifier = Modifier.size(24.dp))
+        Icon(
+            icon,
+            contentDescription = label,
+            tint     = if (isActive) activeColor else Color.White,
+            modifier = Modifier.size(24.dp)
+        )
         Spacer(Modifier.height(4.dp))
-        Text(label, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Medium)
+        Text(
+            label,
+            color      = if (isActive) activeColor else Color.White,
+            fontSize   = 10.sp,
+            fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium
+        )
     }
 }
 
 @Composable
-private fun TextOverlay(
+private fun ToolTextOverlay(
     placed: PlacedText,
     isSelected: Boolean,
     onSelect: () -> Unit,
@@ -507,7 +507,6 @@ private fun TextOverlay(
 ) {
     Box(
         modifier = Modifier
-            .offset { IntOffset(placed.offsetX.roundToInt(), placed.offsetY.roundToInt()) }
             .wrapContentSize()
             .then(
                 if (isSelected) Modifier.border(
@@ -516,18 +515,16 @@ private fun TextOverlay(
             )
             .then(
                 if (isSelected) Modifier.pointerInput(Unit) {
-                    detectDragGestures { _, dragAmount ->
-                        onMove(dragAmount.x, dragAmount.y)
-                    }
+                    detectDragGestures { _, drag -> onMove(drag.x, drag.y) }
                 } else Modifier
             )
     ) {
         Text(
-            text     = placed.text,
-            fontSize = placed.fontSize.sp,
-            color    = placed.color,
+            text       = placed.text,
+            fontSize   = placed.fontSize.sp,
+            color      = placed.color,
             fontWeight = FontWeight.Medium,
-            modifier = Modifier
+            modifier   = Modifier
                 .padding(if (isSelected) 20.dp else 8.dp)
                 .then(
                     if (!isSelected) Modifier.pointerInput(Unit) {
@@ -535,7 +532,6 @@ private fun TextOverlay(
                     } else Modifier
                 )
         )
-
         if (isSelected) {
             Box(
                 modifier = Modifier
@@ -545,8 +541,7 @@ private fun TextOverlay(
                     .background(Color(0xFF00BFA5))
             ) {
                 IconButton(onClick = onRemove, modifier = Modifier.size(24.dp)) {
-                    Icon(Icons.Default.Close, "Quitar texto",
-                        tint = Color.White, modifier = Modifier.size(14.dp))
+                    Icon(Icons.Default.Close, "Quitar", tint = Color.White, modifier = Modifier.size(14.dp))
                 }
             }
             Box(
@@ -557,196 +552,9 @@ private fun TextOverlay(
                     .background(Color(0xFF00BFA5))
             ) {
                 IconButton(onClick = onEdit, modifier = Modifier.size(24.dp)) {
-                    Icon(Icons.Default.Edit, "Editar texto",
-                        tint = Color.White, modifier = Modifier.size(14.dp))
+                    Icon(Icons.Default.Edit, "Editar", tint = Color.White, modifier = Modifier.size(14.dp))
                 }
             }
         }
-    }
-}
-
-@Composable
-internal fun CropActionsPanel(
-    onRotateLeft: () -> Unit,
-    onRotateRight: () -> Unit,
-    onFlipH: () -> Unit,
-    onFlipV: () -> Unit,
-    onClose: () -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(Color(0xFF1A1C1E))
-            .padding(vertical = 20.dp, horizontal = 8.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            CropActionItem(Icons.AutoMirrored.Filled.RotateLeft, "Rot. izq.") { onRotateLeft() }
-            CropActionItem(Icons.AutoMirrored.Filled.RotateRight, "Rot. der.") { onRotateRight() }
-            CropActionItem(Icons.Default.Flip, "Voltear H") { onFlipH() }
-            CropActionItem(
-                icon    = Icons.Default.Flip,
-                label   = "Voltear V",
-                rotated = true,
-                onClick = onFlipV
-            )
-        }
-        Spacer(Modifier.height(8.dp))
-        TextButton(
-            onClick  = onClose,
-            modifier = Modifier.align(Alignment.End)
-        ) {
-            Text("Cerrar", color = Color(0xFF9E9E9E))
-        }
-    }
-}
-
-@Composable
-internal fun CropActionItem(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    rotated: Boolean = false,
-    onClick: () -> Unit
-) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier
-            .clip(RoundedCornerShape(10.dp))
-            .clickable { onClick() }
-            .padding(12.dp)
-    ) {
-        Icon(
-            icon,
-            contentDescription = label,
-            tint = Color.White,
-            modifier = Modifier
-                .size(26.dp)
-                .then(if (rotated) Modifier.graphicsLayer { rotationZ = 90f } else Modifier)
-        )
-        Spacer(Modifier.height(6.dp))
-        Text(label, color = Color(0xFFBBBBBB), fontSize = 11.sp, fontWeight = FontWeight.Medium)
-    }
-}
-
-@Composable
-internal fun FilterPanel(
-    currentImagePath: String,
-    imageVersion: Long,
-    onApply: (ImageFilter) -> Unit,
-    onDismiss: () -> Unit
-) {
-    val context = LocalContext.current
-    var selectedFilter by remember { mutableStateOf(ImageFilter.ORIGINAL) }
-    var activeTab      by remember { mutableStateOf(0) }
-    val filters        = ImageFilter.entries
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(Color(0xFF1A1C1E))
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = onDismiss) {
-                Icon(Icons.Default.Close, "Cancelar", tint = Color.White)
-            }
-            TabRow(
-                selectedTabIndex = activeTab,
-                modifier         = Modifier.weight(1f),
-                containerColor   = Color.Transparent,
-                contentColor     = Color.White,
-                indicator        = { tabPositions ->
-                    TabRowDefaults.SecondaryIndicator(
-                        modifier = Modifier.tabIndicatorOffset(tabPositions[activeTab]),
-                        color    = Color(0xFF5D71F4)
-                    )
-                }
-            ) {
-                listOf("Filtro", "Ajustar").forEachIndexed { i, title ->
-                    Tab(
-                        selected = activeTab == i,
-                        onClick  = { activeTab = i }
-                    ) {
-                        Text(
-                            title,
-                            modifier   = Modifier.padding(vertical = 10.dp),
-                            fontWeight = if (activeTab == i) FontWeight.Bold else FontWeight.Normal
-                        )
-                    }
-                }
-            }
-            IconButton(onClick = { onApply(selectedFilter) }) {
-                Icon(Icons.Default.Check, "Aplicar", tint = Color(0xFF5D71F4))
-            }
-        }
-
-        HorizontalDivider(color = Color.DarkGray.copy(alpha = 0.4f), thickness = 0.5.dp)
-
-        val cacheKey = "$currentImagePath?v=$imageVersion"
-        LazyRow(
-            contentPadding      = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            modifier            = Modifier.fillMaxWidth()
-        ) {
-            itemsIndexed(filters) { _, filter ->
-                val isSelected = filter == selectedFilter
-                val request = remember(cacheKey) {
-                    ImageRequest.Builder(context)
-                        .data(File(currentImagePath))
-                        .memoryCacheKey(cacheKey)
-                        .diskCacheKey(cacheKey)
-                        .size(150)
-                        .build()
-                }
-
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable { selectedFilter = filter }
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(72.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .border(
-                                width = if (isSelected) 2.5.dp else 1.dp,
-                                color = if (isSelected) Color(0xFF5D71F4) else Color(0xFF3E4146),
-                                shape = RoundedCornerShape(8.dp)
-                            )
-                    ) {
-                        SubcomposeAsyncImage(
-                            model              = request,
-                            contentDescription = filter.label,
-                            modifier           = Modifier.fillMaxSize(),
-                            contentScale       = ContentScale.Crop,
-                            colorFilter        = filter.toComposeColorFilter()
-                        )
-                        if (isSelected) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .background(Color(0xFF5D71F4).copy(alpha = 0.15f))
-                            )
-                        }
-                    }
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        text       = filter.label,
-                        color      = if (isSelected) Color(0xFF5D71F4) else Color(0xFF9E9E9E),
-                        fontSize   = 11.sp,
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                    )
-                }
-            }
-        }
-        Spacer(Modifier.height(4.dp))
     }
 }

@@ -40,6 +40,6 @@ val appModule = module {
     viewModel { ExportViewModel(androidApplication(), get(), get()) }
     viewModel { SignatureViewModel(get(), get()) }
     viewModel { DrawSignatureViewModel(get()) }
-    viewModel { (pageId: Long, imagePath: String) -> ImageEditViewModel(pageId, imagePath, get()) }
+    viewModel { (pageId: Long, imagePath: String, allPages: List<com.nirv.converttopdf.data.db.entity.DocumentPageEntity>) -> ImageEditViewModel(pageId, imagePath, allPages, get()) }
     viewModel { DirectoryViewModel(get()) }
 }

@@ -188,11 +188,41 @@ fun AppNavHost() {
                             ImageEditScreen(
                                 pageId    = key.pageId,
                                 imagePath = key.imagePath,
+                                allPagesFlow = previewVm.pages,
                                 onBack    = {
                                     previewVm.notifyPageEdited(key.pageId)
                                     backStack.removeLastOrNull()
                                 },
-                                onDrawNew = { backStack.add(DrawSign) }
+                                onDrawNew = { backStack.add(DrawSign) },
+                                onPageNavigate = { pageId, imagePath ->
+                                    backStack.removeLastOrNull()
+                                    backStack.add(ImageEdit(pageId = pageId, imagePath = imagePath, documentId = key.documentId))
+                                },
+                                onToolSelected = { tool ->
+                                    backStack.add(PageToolEdit(
+                                        pageId      = key.pageId,
+                                        imagePath   = key.imagePath,
+                                        documentId  = key.documentId,
+                                        initialTool = tool
+                                    ))
+                                }
+                            )
+                        }
+
+                        is PageToolEdit -> NavEntry(key = key) {
+                            val previewVm: PreviewViewModel = koinViewModel(
+                                key        = "preview_${key.documentId}",
+                                parameters = { parametersOf(key.documentId) }
+                            )
+                            com.nirv.converttopdf.ui.imageedit.PageToolEditScreen(
+                                pageId      = key.pageId,
+                                imagePath   = key.imagePath,
+                                initialTool = key.initialTool,
+                                onBack      = {
+                                    previewVm.notifyPageEdited(key.pageId)
+                                    backStack.removeLastOrNull()
+                                },
+                                onDrawNew   = { backStack.add(DrawSign) }
                             )
                         }
 
