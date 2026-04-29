@@ -439,15 +439,18 @@ private fun PageCard(
                 }
             }
             // Botón eliminar
-            IconButton(
-                onClick  = onDelete,
+            Box(
                 modifier = Modifier
-                    .padding(6.dp).size(28.dp)
-                    .background(Color.Black.copy(alpha = 0.45f), CircleShape)
                     .align(Alignment.TopEnd)
+                    .padding(6.dp)
+                    .size(26.dp)
+                    .clip(CircleShape)
+                    .background(Color.White)
+                    .clickable { onDelete() },
+                contentAlignment = Alignment.Center
             ) {
                 Icon(Icons.Default.Close, "Eliminar",
-                    tint = Color.White, modifier = Modifier.size(14.dp))
+                    tint = Color(0xFF212121), modifier = Modifier.size(14.dp))
             }
         }
     }

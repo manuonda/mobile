@@ -138,7 +138,8 @@ fun ImageEditScreen(
     var showEditTextDialog  by remember { mutableStateOf<Int?>(null) }
     var strokeWidth         by remember { mutableFloatStateOf(0.4f) }
     var imageDisplaySize    by remember { mutableStateOf(IntSize.Zero) }
-    var carouselState = rememberLazyListState();
+    var carouselState = rememberLazyListState()
+    var activeTool    by remember { mutableStateOf<String?>(null) }
 
     // Efecto
     LaunchedEffect(currentIndex) {
@@ -268,8 +269,8 @@ fun ImageEditScreen(
             ) {
                 HorizontalDivider(color = Color.DarkGray.copy(alpha = 0.5f), thickness = 0.5.dp)
 
-                // --- CARRUSEL DE PÁGINAS ---
-                if (allPages.isNotEmpty()) {
+                // Carrusel oculto mientras hay una herramienta activa
+                if (allPages.isNotEmpty() && activeTool == null) {
                     LazyRow(
                         state                 = carouselState,
                         contentPadding        = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
@@ -317,11 +318,38 @@ fun ImageEditScreen(
                     }
                 }
 
-                // --- BARRA DE HERRAMIENTAS ---
+                // Panel de herramienta activa (inline, sin modal)
+                AnimatedVisibility(visible = activeTool != null) {
+                    when (activeTool) {
+                        "crop" -> CropActionsPanel(
+                            onRotateLeft  = { viewModel.rotateImage(-90f) },
+                            onRotateRight = { viewModel.rotateImage(90f) },
+                            onFlipH       = { viewModel.flipImage(true) },
+                            onFlipV       = { viewModel.flipImage(false) }
+                        )
+                        "filter" -> FilterPanel(
+                            currentImagePath = currentImagePath,
+                            imageVersion     = imageVersion,
+                            onApply          = { filter -> viewModel.applyFilterAndSave(filter); activeTool = null },
+                            onDismiss        = { activeTool = null }
+                        )
+                        "signature" -> SignatureToolPanel(
+                            onAddSignature = { showSignatureSheet = true }
+                        )
+                        "text" -> TextToolPanel(
+                            onAddText = { showTextDialog = true },
+                            onAddDate = { viewModel.placeDateText() }
+                        )
+                    }
+                }
+
+                HorizontalDivider(color = Color.DarkGray.copy(alpha = 0.3f), thickness = 0.5.dp)
+
+                // Barra de herramientas principal
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 8.dp, end = 16.dp, bottom = 12.dp),
+                        .padding(start = 8.dp, end = 16.dp, bottom = 12.dp, top = 8.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment     = Alignment.CenterVertically
                 ) {
@@ -329,13 +357,16 @@ fun ImageEditScreen(
                         modifier              = Modifier.weight(1f),
                         horizontalArrangement = Arrangement.SpaceEvenly
                     ) {
-                        EditActionButton(Icons.Default.Crop,       "Cultivos") { onToolSelected("crop") }
-                        EditActionButton(Icons.Default.Gesture,    "Garabato") { onToolSelected("signature") }
-                        EditActionButton(Icons.Default.ColorLens,  "Filtro")   { onToolSelected("filter") }
-                        EditActionButton(Icons.Default.TextFields, "Texto")    { onToolSelected("text") }
+                        EditToolTab(Icons.Default.Crop,       "Cultivos",  activeTool == "crop")      { activeTool = if (activeTool == "crop")      null else "crop" }
+                        EditToolTab(Icons.Default.Gesture,    "Garabato",  activeTool == "signature") { activeTool = if (activeTool == "signature") null else "signature" }
+                        EditToolTab(Icons.Default.ColorLens,  "Filtro",    activeTool == "filter")    { activeTool = if (activeTool == "filter")    null else "filter" }
+                        EditToolTab(Icons.Default.TextFields, "Texto",     activeTool == "text")      { activeTool = if (activeTool == "text")      null else "text" }
                     }
                     IconButton(
-                        onClick  = { viewModel.confirmAndSave(imageDisplaySize, density) { onBack() } },
+                        onClick = {
+                            if (activeTool != null) activeTool = null
+                            else viewModel.confirmAndSave(imageDisplaySize, density) { onBack() }
+                        },
                         modifier = Modifier
                             .size(54.dp)
                             .clip(CircleShape)
@@ -369,6 +400,11 @@ fun ImageEditScreen(
                         .diskCacheKey(cacheKey)
                         .build()
                 }
+                val centerImage = activeTool == "crop" || activeTool == "filter"
+                Box(
+                    modifier         = Modifier.fillMaxSize(),
+                    contentAlignment = if (centerImage) Alignment.Center else Alignment.TopStart
+                ) {
                 SubcomposeAsyncImage(
                     model              = request,
                     contentDescription = "Página",
@@ -402,6 +438,7 @@ fun ImageEditScreen(
                         }
                     }
                 )
+                } // Box centrador
             }
 
             placedSignatures.forEach { placed ->
@@ -482,7 +519,13 @@ fun ImageEditScreen(
 }
 
 @Composable
-private fun EditActionButton(icon: ImageVector, label: String, onClick: () -> Unit) {
+private fun EditToolTab(
+    icon: ImageVector,
+    label: String,
+    isActive: Boolean,
+    onClick: () -> Unit
+) {
+    val color = if (isActive) Color(0xFFFFBD00) else Color.White
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
@@ -490,9 +533,62 @@ private fun EditActionButton(icon: ImageVector, label: String, onClick: () -> Un
             .clickable { onClick() }
             .padding(8.dp)
     ) {
-        Icon(icon, contentDescription = label, tint = Color.White, modifier = Modifier.size(24.dp))
+        Icon(icon, contentDescription = label, tint = color, modifier = Modifier.size(24.dp))
         Spacer(Modifier.height(4.dp))
-        Text(label, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Medium)
+        Text(label, color = color, fontSize = 10.sp, fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium)
+    }
+}
+
+@Composable
+private fun SignatureToolPanel(onAddSignature: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFF1A1C1E))
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(8.dp))
+                .background(Color(0xFF2D2F33))
+                .clickable { onAddSignature() }
+                .padding(horizontal = 18.dp, vertical = 10.dp)
+        ) {
+            Text("Agregar firma", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+        }
+    }
+}
+
+@Composable
+private fun TextToolPanel(onAddText: () -> Unit, onAddDate: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFF1A1C1E))
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xFF2D2F33))
+                    .clickable { onAddText() }
+                    .padding(horizontal = 16.dp, vertical = 10.dp)
+            ) {
+                Text("Agregar texto", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            }
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xFF2D2F33))
+                    .clickable { onAddDate() }
+                    .padding(horizontal = 16.dp, vertical = 10.dp)
+            ) {
+                Text("Fecha", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            }
+        }
     }
 }
 
@@ -570,37 +666,25 @@ internal fun CropActionsPanel(
     onRotateLeft: () -> Unit,
     onRotateRight: () -> Unit,
     onFlipH: () -> Unit,
-    onFlipV: () -> Unit,
-    onClose: () -> Unit
+    onFlipV: () -> Unit
 ) {
-    Column(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .background(Color(0xFF1A1C1E))
-            .padding(vertical = 20.dp, horizontal = 8.dp)
+            .padding(vertical = 20.dp, horizontal = 8.dp),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment     = Alignment.CenterVertically
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            CropActionItem(Icons.AutoMirrored.Filled.RotateLeft, "Rot. izq.") { onRotateLeft() }
-            CropActionItem(Icons.AutoMirrored.Filled.RotateRight, "Rot. der.") { onRotateRight() }
-            CropActionItem(Icons.Default.Flip, "Voltear H") { onFlipH() }
-            CropActionItem(
-                icon    = Icons.Default.Flip,
-                label   = "Voltear V",
-                rotated = true,
-                onClick = onFlipV
-            )
-        }
-        Spacer(Modifier.height(8.dp))
-        TextButton(
-            onClick  = onClose,
-            modifier = Modifier.align(Alignment.End)
-        ) {
-            Text("Cerrar", color = Color(0xFF9E9E9E))
-        }
+        CropActionItem(Icons.AutoMirrored.Filled.RotateLeft, "Rot. izq.") { onRotateLeft() }
+        CropActionItem(Icons.AutoMirrored.Filled.RotateRight, "Rot. der.") { onRotateRight() }
+        CropActionItem(Icons.Default.Flip, "Voltear H") { onFlipH() }
+        CropActionItem(
+            icon    = Icons.Default.Flip,
+            label   = "Voltear V",
+            rotated = true,
+            onClick = onFlipV
+        )
     }
 }
 

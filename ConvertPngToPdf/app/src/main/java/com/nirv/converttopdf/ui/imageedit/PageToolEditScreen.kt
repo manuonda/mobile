@@ -261,8 +261,7 @@ fun PageToolEditScreen(
                         onRotateLeft  = { viewModel.rotateImage(-90f) },
                         onRotateRight = { viewModel.rotateImage(90f) },
                         onFlipH       = { viewModel.flipImage(horizontal = true) },
-                        onFlipV       = { viewModel.flipImage(horizontal = false) },
-                        onClose       = { activeTool = "" }
+                        onFlipV       = { viewModel.flipImage(horizontal = false) }
                     )
                 }
 

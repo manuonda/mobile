@@ -3,16 +3,41 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+    <!-- Document/PDF base -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M54,30 L74,50 L74,78 L34,78 L34,50 L54,30 Z"/>
+        android:pathData="M38,28 L62,28 L70,36 L70,80 L38,80 Z"/>
+    <!-- Document fold corner -->
+    <path
+        android:fillColor="#E0E0E0"
+        android:pathData="M62,28 L62,36 L70,36 Z"/>
+    <!-- PDF text lines -->
+    <path
+        android:fillColor="#1976D2"
+        android:pathData="M44,44 L64,44 L64,47 L44,47 Z"/>
     <path
         android:fillColor="#E3F2FD"
-        android:pathData="M44,55 L64,55 L64,58 L44,58 Z"/>
+        android:pathData="M44,52 L60,52 L60,55 L44,55 Z"/>
     <path
         android:fillColor="#E3F2FD"
-        android:pathData="M44,62 L60,62 L60,65 L44,65 Z"/>
+        android:pathData="M44,59 L56,59 L56,62 L44,62 Z"/>
     <path
         android:fillColor="#E3F2FD"
-        android:pathData="M44,69 L56,69 L56,72 L44,72 Z"/>
+        android:pathData="M44,66 L58,66 L58,69 L44,69 Z"/>
+    <!-- Image frame overlay -->
+    <path
+        android:fillColor="#FFC107"
+        android:pathData="M56,50 L76,50 L76,76 L56,76 Z"/>
+    <!-- Image inner -->
+    <path
+        android:fillColor="#FF9800"
+        android:pathData="M60,54 L72,54 L72,72 L60,72 Z"/>
+    <!-- Mountain in image -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M60,72 L64,62 L68,72 Z"/>
+    <!-- Sun in image -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M68,58 A3,3 0 1,1 68,58.1 Z"/>
 </vector>
