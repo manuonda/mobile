@@ -59,15 +59,26 @@ import org.koin.core.parameter.parametersOf
 private fun isMainTab(dest: Any?): Boolean =
     dest is Home || dest is DirectoryFiles || dest is Settings
 
-private val TRANSITION_MS = 280
+private val TRANSITION_MS = 320
 
+// Transición estándar: desliza desde la derecha con fade
 private val pushTransition: ContentTransform
-    get() = (slideInHorizontally(tween(TRANSITION_MS)) { it } + fadeIn(tween(TRANSITION_MS))) togetherWith
-            (slideOutHorizontally(tween(TRANSITION_MS)) { -it / 4 } + fadeOut(tween(TRANSITION_MS, delayMillis = 0)))
+    get() = (slideInHorizontally(tween(TRANSITION_MS)) { it / 2 } + fadeIn(tween(TRANSITION_MS))) togetherWith
+            (slideOutHorizontally(tween(TRANSITION_MS)) { -it / 6 } + fadeOut(tween(TRANSITION_MS / 2)))
 
+// Regreso: desliza hacia la derecha con fade
 private val popTransition: ContentTransform
-    get() = (slideInHorizontally(tween(TRANSITION_MS)) { -it / 4 } + fadeIn(tween(TRANSITION_MS))) togetherWith
-            (slideOutHorizontally(tween(TRANSITION_MS)) { it } + fadeOut(tween(TRANSITION_MS)))
+    get() = (slideInHorizontally(tween(TRANSITION_MS)) { -it / 6 } + fadeIn(tween(TRANSITION_MS))) togetherWith
+            (slideOutHorizontally(tween(TRANSITION_MS)) { it / 2 } + fadeOut(tween(TRANSITION_MS / 2)))
+
+// Transición para ImageEdit: sube desde abajo con fade (evita el "salto" de colores)
+private val sheetEnterTransition: ContentTransform
+    get() = (slideInVertically(tween(TRANSITION_MS)) { it / 3 } + fadeIn(tween(TRANSITION_MS))) togetherWith
+            fadeOut(tween(TRANSITION_MS / 2))
+
+private val sheetExitTransition: ContentTransform
+    get() = fadeIn(tween(TRANSITION_MS / 2)) togetherWith
+            (slideOutVertically(tween(TRANSITION_MS)) { it / 3 } + fadeOut(tween(TRANSITION_MS)))
 
 @Composable
 fun AppNavHost() {
@@ -124,8 +135,14 @@ fun AppNavHost() {
             NavDisplay(
                 backStack          = backStack,
                 onBack             = { backStack.removeLastOrNull() },
-                transitionSpec     = { pushTransition },
-                popTransitionSpec  = { popTransition },
+                transitionSpec     = {
+                    if (currentDest is ImageEdit || currentDest is PageToolEdit) sheetEnterTransition
+                    else pushTransition
+                },
+                popTransitionSpec  = {
+                    if (currentDest is ImageEdit || currentDest is PageToolEdit) sheetExitTransition
+                    else popTransition
+                },
                 entryProvider = { key ->
                     when (key) {
                         is Home -> NavEntry(key = Home) {
