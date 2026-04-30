@@ -141,7 +141,13 @@ fun ImageEditScreen(
     var carouselState = rememberLazyListState()
     var activeTool    by remember { mutableStateOf<String?>(null) }
 
-    // Efecto
+    // Sincroniza índice inicial cuando las páginas cargan por primera vez
+    LaunchedEffect(allPages) {
+        if (allPages.isNotEmpty()) {
+            viewModel.syncInitialPage(allPages)
+        }
+    }
+
     LaunchedEffect(currentIndex) {
         if (currentIndex >= 0 && currentIndex < allPages.size) {
             carouselState.animateScrollToItem(currentIndex)
@@ -275,7 +281,9 @@ fun ImageEditScreen(
                         state                 = carouselState,
                         contentPadding        = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        modifier              = Modifier.fillMaxWidth()
+                        modifier              = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp)
                     ) {
                         itemsIndexed(allPages) { index, page ->
                             val isSelected = index == currentIndex
@@ -383,6 +391,7 @@ fun ImageEditScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .background(Color(0xFF0E0F10))
                 .pointerInput(Unit) { detectTapGestures { viewModel.deselectAll() } }
         ) {
             AnimatedContent(
@@ -400,23 +409,35 @@ fun ImageEditScreen(
                         .diskCacheKey(cacheKey)
                         .build()
                 }
-                val centerImage = activeTool == "crop" || activeTool == "filter"
+                val filterActive = activeTool == "filter"
                 Box(
                     modifier         = Modifier.fillMaxSize(),
-                    contentAlignment = if (centerImage) Alignment.Center else Alignment.TopStart
+                    contentAlignment = if (filterActive) Alignment.Center else Alignment.TopCenter
                 ) {
                 SubcomposeAsyncImage(
                     model              = request,
                     contentDescription = "Página",
                     modifier           = Modifier
-                        .fillMaxWidth()
+                        .then(
+                            if (filterActive)
+                                Modifier
+                                    .fillMaxWidth(0.65f)
+                                    .aspectRatio(3f / 4f)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .border(1.dp, Color(0xFF3E4146), RoundedCornerShape(6.dp))
+                            else
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp)
+                                    .clip(RoundedCornerShape(4.dp))
+                        )
                         .onGloballyPositioned { coords ->
                             if (imageDisplaySize != coords.size) {
                                 imageDisplaySize = coords.size
                                 Log.d(TAG, "imageDisplaySize updated → ${coords.size}")
                             }
                         },
-                    contentScale = ContentScale.FillWidth,
+                    contentScale = if (filterActive) ContentScale.Crop else ContentScale.FillWidth,
                     loading = {
                         Box(
                             modifier = Modifier

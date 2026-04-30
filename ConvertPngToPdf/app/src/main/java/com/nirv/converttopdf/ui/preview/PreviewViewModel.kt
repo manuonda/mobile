@@ -87,6 +87,7 @@ class PreviewViewModel(
             exportToPdfUseCase(paths, _documentName.value.ifBlank { null })
                 .onSuccess { uri ->
                     Log.d(TAG, "shareAsPdf: uri=$uri")
+                    documentRepository.markAsExported(documentId)
                     _shareState.value = ShareState.Ready(uri)
                 }
                 .onFailure { e ->

@@ -18,6 +18,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.nirv.converttopdf.data.db.entity.DocumentEntity
+import com.nirv.converttopdf.data.db.entity.DocumentStatus
 import com.nirv.converttopdf.ui.home.components.HomeActionsGrid
 import com.nirv.converttopdf.ui.home.components.HomeHeader
 import com.nirv.converttopdf.ui.home.components.RecentSectionHeader
@@ -126,29 +127,52 @@ private fun DraftRow(
             .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        val isExported = draft.status == DocumentStatus.EXPORTED
         Box(
             modifier = Modifier
                 .size(44.dp)
                 .clip(RoundedCornerShape(10.dp))
-                .background(MaterialTheme.colorScheme.primaryContainer),
+                .background(
+                    if (isExported) MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.7f)
+                    else MaterialTheme.colorScheme.primaryContainer
+                ),
             contentAlignment = Alignment.Center
         ) {
             Icon(
-                imageVector = Icons.Default.Description,
+                imageVector = if (isExported) Icons.Default.PictureAsPdf else Icons.Default.Edit,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onBackground,
+                tint = if (isExported) MaterialTheme.colorScheme.error
+                       else MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(24.dp)
             )
         }
         Spacer(Modifier.width(14.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = draft.name,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                color = MaterialTheme.colorScheme.onBackground
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = draft.name,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                Spacer(Modifier.width(6.dp))
+                Surface(
+                    shape = RoundedCornerShape(4.dp),
+                    color = if (isExported) MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.6f)
+                            else MaterialTheme.colorScheme.secondaryContainer
+                ) {
+                    Text(
+                        text = if (isExported) "PDF" else "Proyecto",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isExported) MaterialTheme.colorScheme.error
+                                else MaterialTheme.colorScheme.secondary,
+                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                    )
+                }
+            }
             Spacer(Modifier.height(2.dp))
             Text(
                 text = "${draft.pageCount} ${if (draft.pageCount == 1) "página" else "páginas"}  •  ${formatDate(draft.createdAt)}",

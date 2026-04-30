@@ -154,6 +154,10 @@ class DocumentRepository(
     suspend fun getDocumentById(docId: Long): DocumentEntity? =
         dao.getDocumentById(docId)
 
+    suspend fun markAsExported(docId: Long) {
+        dao.updateStatus(docId, com.nirv.converttopdf.data.db.entity.DocumentStatus.EXPORTED.name)
+    }
+
     // ── Ruta de carpeta de un documento ──────────────────────────────────────
     private fun documentFolder(docId: Long) =
         File(context.filesDir, "documents/$docId")

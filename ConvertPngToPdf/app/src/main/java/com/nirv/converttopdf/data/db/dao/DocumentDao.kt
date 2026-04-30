@@ -43,4 +43,7 @@ interface DocumentDao {
 
     @Query("SELECT * FROM documents WHERE id = :docId")
     suspend fun getDocumentById(docId: Long): DocumentEntity?
+
+    @Query("UPDATE documents SET status = :status WHERE id = :docId")
+    suspend fun updateStatus(docId: Long, status: String)
 }

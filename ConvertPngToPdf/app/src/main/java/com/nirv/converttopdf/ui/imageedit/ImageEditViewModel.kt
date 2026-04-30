@@ -214,11 +214,18 @@ class ImageEditViewModel(
     fun goToPage(index: Int) {
         if (index in allPages.indices && index != _currentIndex.value) {
             _currentIndex.value = index
-            // Clear edits when changing pages to avoid carrying over firmas/textos to other images
             _placedSignatures.value = emptyList()
             _placedTexts.value = emptyList()
             _selectedSignatureId.value = null
             _selectedTextId.value = null
+        }
+    }
+
+    fun syncInitialPage(pages: List<DocumentPageEntity>) {
+        if (pages.isEmpty()) return
+        val correctIndex = pages.indexOfFirst { it.id == initialPageId }
+        if (correctIndex >= 0 && correctIndex != _currentIndex.value) {
+            _currentIndex.value = correctIndex
         }
     }
 

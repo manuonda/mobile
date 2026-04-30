@@ -426,31 +426,45 @@ private fun PageCard(
                     Box(modifier = Modifier.fillMaxSize().background(shimmerBrush))
                 }
             )
-            // Badge número
-            Surface(
-                color    = MaterialTheme.colorScheme.primary,
-                shape    = CircleShape,
-                modifier = Modifier.padding(8.dp).size(24.dp).align(Alignment.TopStart)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text("${index + 1}", fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onPrimary)
-                }
-            }
-            // Botón eliminar
-            Box(
+            // Fila superior: número (izquierda) + eliminar (derecha) — misma altura
+            Row(
                 modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(6.dp)
-                    .size(26.dp)
-                    .clip(CircleShape)
-                    .background(Color.White)
-                    .clickable { onDelete() },
-                contentAlignment = Alignment.Center
+                    .fillMaxWidth()
+                    .padding(8.dp)
+                    .align(Alignment.TopStart),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment     = Alignment.CenterVertically
             ) {
-                Icon(Icons.Default.Close, "Eliminar",
-                    tint = Color(0xFF212121), modifier = Modifier.size(14.dp))
+                // Badge número
+                Surface(
+                    color  = MaterialTheme.colorScheme.primary,
+                    shape  = CircleShape,
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            "${index + 1}",
+                            fontSize   = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color      = MaterialTheme.colorScheme.onPrimary
+                        )
+                    }
+                }
+                // Botón eliminar
+                Box(
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xCCE53935))
+                        .clickable { onDelete() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Default.Close, "Eliminar",
+                        tint     = Color.White,
+                        modifier = Modifier.size(13.dp)
+                    )
+                }
             }
         }
     }
