@@ -10,6 +10,7 @@ import com.nirv.converttopdf.domain.usecase.ExportToPdfUseCase
 import com.nirv.converttopdf.ui.capture.CaptureViewModel
 import com.nirv.converttopdf.ui.export.ExportViewModel
 import com.nirv.converttopdf.ui.files.DirectoryViewModel
+import com.nirv.converttopdf.ui.files.FilesViewModel
 import com.nirv.converttopdf.ui.home.HomeViewModel
 import com.nirv.converttopdf.ui.preview.PreviewViewModel
 import com.nirv.converttopdf.ui.imageedit.ImageEditViewModel
@@ -42,4 +43,5 @@ val appModule = module {
     viewModel { DrawSignatureViewModel(get()) }
     viewModel { (pageId: Long, imagePath: String, allPages: List<com.nirv.converttopdf.data.db.entity.DocumentPageEntity>) -> ImageEditViewModel(pageId, imagePath, allPages, get()) }
     viewModel { DirectoryViewModel(get()) }
+    viewModel { FilesViewModel(get(), get()) }
 }

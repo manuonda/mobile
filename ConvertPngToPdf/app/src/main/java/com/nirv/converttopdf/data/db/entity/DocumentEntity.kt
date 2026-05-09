@@ -21,7 +21,9 @@ data class DocumentEntity(
 
     @ColumnInfo(defaultValue = "PROJECT")
     val type: DocumentType = DocumentType.PROJECT,
-    val pdfPath: String? = null, // Solo se llena si type === (PDF/Word)
-    val parentProjectId :Long? = null // Opcional: para saber de que tipo de project seria
+    val pdfPath: String? = null,
+    val parentProjectId: Long? = null,
 
+    @ColumnInfo(defaultValue = "0")
+    val isFavorite: Boolean = false
 )

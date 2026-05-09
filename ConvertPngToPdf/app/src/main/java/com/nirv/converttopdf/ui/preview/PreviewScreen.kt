@@ -39,7 +39,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddAPhoto
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Draw
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FileDownload
@@ -52,14 +54,18 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -73,6 +79,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -158,6 +166,13 @@ fun PreviewScreenContent(
     var showRenameDialog by remember { mutableStateOf(false) }
     var renameInput      by remember { mutableStateOf("") }
     var showShareSheet   by remember { mutableStateOf(false) }
+    var showDocSettings  by remember { mutableStateOf(false) }
+
+    // PDF export settings (local — se aplican al compartir)
+    var pdfExportName  by remember(documentTitle) { mutableStateOf(documentTitle) }
+    var pdfGrayscale   by remember { mutableStateOf(false) }
+    var pdfWhiteMargin by remember { mutableStateOf(false) }
+    var pdfQuality     by remember { mutableStateOf("Alto") }
 
     val shimmerBrush = rememberShimmerBrush()
 
@@ -211,6 +226,8 @@ fun PreviewScreenContent(
 
     // ── Diálogo de renombrar ──────────────────────────────────────────────────
     if (showRenameDialog) {
+        val focusRequester = remember { FocusRequester() }
+        LaunchedEffect(Unit) { focusRequester.requestFocus() }
         AlertDialog(
             onDismissRequest = { showRenameDialog = false },
             title   = { Text("Renombrar proyecto", fontWeight = FontWeight.Bold) },
@@ -219,16 +236,41 @@ fun PreviewScreenContent(
                     value         = renameInput,
                     onValueChange = { renameInput = it },
                     singleLine    = true,
-                    placeholder   = { Text("Ej: Factura de luz") },
-                    shape         = RoundedCornerShape(12.dp)
+                    label         = { Text("Nombre del proyecto") },
+                    shape         = RoundedCornerShape(12.dp),
+                    modifier      = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(focusRequester),
+                    trailingIcon  = {
+                        if (renameInput.isNotEmpty()) {
+                            IconButton(onClick = { renameInput = "" }) {
+                                Icon(
+                                    Icons.Default.Close, "Borrar texto",
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                    },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor      = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor    = MaterialTheme.colorScheme.outline,
+                        focusedContainerColor   = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f),
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                        cursorColor             = MaterialTheme.colorScheme.primary
+                    )
                 )
             },
             dismissButton = {
-                TextButton(onClick = { showRenameDialog = false }) { Text("Cancelar") }
+                OutlinedButton(
+                    onClick = { showRenameDialog = false },
+                    shape   = RoundedCornerShape(50)
+                ) { Text("Cancelar") }
             },
             confirmButton = {
-                TextButton(
-                    onClick = { onTitleChange(renameInput.trim()); showRenameDialog = false }
+                Button(
+                    onClick  = { onTitleChange(renameInput.trim()); showRenameDialog = false },
+                    enabled  = renameInput.trim().isNotBlank(),
+                    shape    = RoundedCornerShape(50)
                 ) { Text("Guardar") }
             }
         )
@@ -265,6 +307,138 @@ fun PreviewScreenContent(
                     }
                 }
             )
+        }
+    }
+
+    // ── Configuración del documento ───────────────────────────────────────────
+    if (showDocSettings) {
+        ModalBottomSheet(
+            onDismissRequest = { showDocSettings = false },
+            containerColor   = MaterialTheme.colorScheme.surface,
+            shape            = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .padding(bottom = 36.dp)
+            ) {
+                // ── Título + cerrar ───────────────────────────────────────────
+                Row(
+                    modifier          = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Configurar PDF",
+                        style      = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        modifier   = Modifier.weight(1f)
+                    )
+                    IconButton(onClick = { showDocSettings = false }) {
+                        Icon(Icons.Default.Close, "Cerrar")
+                    }
+                }
+
+                // ── Nombre del archivo ────────────────────────────────────────
+                OutlinedTextField(
+                    value         = pdfExportName,
+                    onValueChange = { pdfExportName = it },
+                    label         = { Text("Nombre del archivo PDF", fontSize = 12.sp) },
+                    singleLine    = true,
+                    shape         = RoundedCornerShape(12.dp),
+                    modifier      = Modifier.fillMaxWidth(),
+                    suffix        = { Text(".pdf", color = PlazoMuted, fontSize = 13.sp) },
+                    trailingIcon  = {
+                        if (pdfExportName.isNotEmpty()) {
+                            IconButton(onClick = { pdfExportName = "" }) {
+                                Icon(Icons.Default.Close, null, modifier = Modifier.size(16.dp))
+                            }
+                        }
+                    },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor      = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor    = MaterialTheme.colorScheme.outline,
+                        focusedContainerColor   = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f),
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                        cursorColor             = MaterialTheme.colorScheme.primary
+                    )
+                )
+
+                Spacer(Modifier.height(8.dp))
+                HorizontalDivider(
+                    modifier  = Modifier.padding(vertical = 8.dp),
+                    color     = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f),
+                    thickness = 0.5.dp
+                )
+
+                // ── Escala de grises ──────────────────────────────────────────
+                Row(
+                    modifier              = Modifier.fillMaxWidth().padding(vertical = 10.dp),
+                    verticalAlignment     = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                        Text("Aplicar escala de grises", style = MaterialTheme.typography.bodyMedium)
+                        Text("Convierte las páginas a blanco y negro", style = MaterialTheme.typography.bodySmall, color = PlazoMuted)
+                    }
+                    Switch(checked = pdfGrayscale, onCheckedChange = { pdfGrayscale = it })
+                }
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f), thickness = 0.5.dp)
+
+                // ── Margen blanco ─────────────────────────────────────────────
+                Row(
+                    modifier              = Modifier.fillMaxWidth().padding(vertical = 10.dp),
+                    verticalAlignment     = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                        Text("Insertar margen blanco", style = MaterialTheme.typography.bodyMedium)
+                        Text("Agrega margen alrededor de cada página", style = MaterialTheme.typography.bodySmall, color = PlazoMuted)
+                    }
+                    Switch(checked = pdfWhiteMargin, onCheckedChange = { pdfWhiteMargin = it })
+                }
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f), thickness = 0.5.dp)
+
+                Spacer(Modifier.height(12.dp))
+
+                // ── Calidad de imagen ─────────────────────────────────────────
+                Text(
+                    "Calidad de imagen",
+                    style    = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("Alto", "Medio", "Bajo").forEach { q ->
+                        FilterChip(
+                            selected = pdfQuality == q,
+                            onClick  = { pdfQuality = q },
+                            label    = { Text(q, fontSize = 13.sp) }
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(24.dp))
+
+                // ── Botones acción ────────────────────────────────────────────
+                Row(
+                    modifier              = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    OutlinedButton(
+                        onClick  = { showDocSettings = false },
+                        modifier = Modifier.weight(1f).height(52.dp),
+                        shape    = RoundedCornerShape(14.dp)
+                    ) { Text("Cancelar") }
+
+                    Button(
+                        onClick  = { showDocSettings = false; showShareSheet = true },
+                        modifier = Modifier.weight(1f).height(52.dp),
+                        shape    = RoundedCornerShape(14.dp),
+                        enabled  = pages.isNotEmpty()
+                    ) { Text("Compartir PDF") }
+                }
+            }
         }
     }
 
@@ -400,6 +574,26 @@ fun PreviewScreenContent(
                                 color      = MaterialTheme.colorScheme.onPrimary
                             )
                         }
+                    }
+
+                    // Configuración del documento
+                    Box(
+                        modifier = Modifier
+                            .size(52.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .border(
+                                1.dp,
+                                MaterialTheme.colorScheme.outline.copy(alpha = 0.45f),
+                                RoundedCornerShape(14.dp)
+                            )
+                            .clickable { showDocSettings = true },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Default.Tune, "Configuración",
+                            modifier = Modifier.size(20.dp),
+                            tint     = MaterialTheme.colorScheme.onSurface
+                        )
                     }
                 }
             }
@@ -724,21 +918,25 @@ private fun AddImageCard(onClick: () -> Unit) {
             .fillMaxWidth()
             .aspectRatio(0.75f)
             .clip(RoundedCornerShape(12.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-            .border(
-                1.5.dp,
-                MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
-                RoundedCornerShape(12.dp)
-            )
+            .background(MaterialTheme.colorScheme.primary)
             .clickable { onClick() },
         contentAlignment = Alignment.Center
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Icon(Icons.Default.Add, null, modifier = Modifier.size(32.dp), tint = PlazoMuted)
-            Text("Añadir", style = MaterialTheme.typography.bodySmall, color = PlazoMuted)
+            Icon(
+                Icons.Default.CameraAlt, null,
+                modifier = Modifier.size(36.dp),
+                tint     = MaterialTheme.colorScheme.onPrimary
+            )
+            Text(
+                "Cámara",
+                style  = MaterialTheme.typography.bodySmall,
+                color  = MaterialTheme.colorScheme.onPrimary,
+                fontWeight = FontWeight.Medium
+            )
         }
     }
 }

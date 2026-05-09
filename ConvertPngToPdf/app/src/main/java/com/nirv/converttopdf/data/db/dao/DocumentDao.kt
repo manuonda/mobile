@@ -1,18 +1,31 @@
 package com.nirv.converttopdf.data.db.dao
 
 import androidx.room.Dao
-import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.Query
 import com.nirv.converttopdf.data.db.entity.DocumentEntity
 import com.nirv.converttopdf.data.db.entity.DocumentPageEntity
 import kotlinx.coroutines.flow.Flow
 
+data class FirstPageProjection(val documentId: Long, val imagePath: String)
+
 @Dao
 interface DocumentDao {
 
     @Query("SELECT * FROM documents ORDER BY createdAt DESC")
     fun getAllDocuments(): Flow<List<DocumentEntity>>
+
+    @Query("SELECT * FROM documents WHERE isFavorite = 1 ORDER BY createdAt DESC")
+    fun getFavoriteDocuments(): Flow<List<DocumentEntity>>
+
+    @Query("SELECT * FROM documents ORDER BY createdAt DESC LIMIT 30")
+    fun getRecentDocuments(): Flow<List<DocumentEntity>>
+
+    @Query("UPDATE documents SET isFavorite = :isFavorite WHERE id = :docId")
+    suspend fun updateFavorite(docId: Long, isFavorite: Boolean)
+
+    @Query("SELECT documentId, imagePath FROM document_pages WHERE pageOrder = 0")
+    fun getAllFirstPages(): Flow<List<FirstPageProjection>>
 
     @Insert
     suspend fun insertDocument(doc: DocumentEntity): Long

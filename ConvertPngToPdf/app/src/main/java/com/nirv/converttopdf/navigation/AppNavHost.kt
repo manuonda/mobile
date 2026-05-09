@@ -285,7 +285,8 @@ fun AppNavHost() {
 
                         is DirectoryFiles -> NavEntry(key = DirectoryFiles) {
                             DirectryFileScreen(
-                                onBack = { backStack.removeLastOrNull() }
+                                onBack       = { backStack.removeLastOrNull() },
+                                onDraftClick = { docId -> backStack.add(Preview(docId)) }
                             )
                         }
 
