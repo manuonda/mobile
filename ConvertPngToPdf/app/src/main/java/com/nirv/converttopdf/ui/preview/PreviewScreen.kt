@@ -1,6 +1,9 @@
 package com.nirv.converttopdf.ui.preview
 
 import android.content.Intent
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -38,7 +41,9 @@ import androidx.compose.material.icons.filled.AddAPhoto
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Draw
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FilterFrames
+import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
@@ -106,19 +111,22 @@ fun PreviewScreen(
     val pageVersions by viewModel.pageVersions.collectAsStateWithLifecycle()
 
     PreviewScreenContent(
-        pages             = pages,
-        shareState        = shareState,
-        documentTitle     = documentName,
-        isLoading         = isLoading,
-        pageVersions      = pageVersions,
-        onBack            = onBack,
-        onAddMore         = onAddMore,
-        onSign            = onSign,
-        onEditPage        = onEditPage,
-        onDeletePage      = { page -> viewModel.removePage(page)},
-        onShare           = { viewModel.shareAsPdf() },
-        onResetShareState = { viewModel.resetShareState() },
-        onTitleChange     = { viewModel.renameDocument(it) }
+        pages              = pages,
+        shareState         = shareState,
+        documentTitle      = documentName,
+        isLoading          = isLoading,
+        pageVersions       = pageVersions,
+        onBack             = onBack,
+        onAddMore          = onAddMore,
+        onSign             = onSign,
+        onEditPage         = onEditPage,
+        onDeletePage       = { page -> viewModel.removePage(page) },
+        onShare            = { viewModel.shareAsPdf() },
+        onShareImages      = { viewModel.shareAsImages() },
+        onExportPdf        = { viewModel.exportPdfToDevice() },
+        onWritePdfToDevice = { uri -> viewModel.writePdfToDevice(uri) },
+        onResetShareState  = { viewModel.resetShareState() },
+        onTitleChange      = { viewModel.renameDocument(it) }
     )
 }
 
@@ -136,6 +144,9 @@ fun PreviewScreenContent(
     onEditPage: (pageId: Long, imagePath: String) -> Unit = { _, _ -> },
     onDeletePage: (DocumentPageEntity) -> Unit,
     onShare: () -> Unit,
+    onShareImages: () -> Unit,
+    onExportPdf: () -> Unit,
+    onWritePdfToDevice: (Uri) -> Unit,
     onResetShareState: () -> Unit,
     onTitleChange: (String) -> Unit
 ) {
@@ -147,21 +158,48 @@ fun PreviewScreenContent(
     var renameInput      by remember { mutableStateOf("") }
     var showShareSheet   by remember { mutableStateOf(false) }
 
-    // Shimmer compartido — una sola animación para todas las celdas
     val shimmerBrush = rememberShimmerBrush()
 
+    // Launcher para "Exportar páginas como PDF" — el usuario elige dónde guardar
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/pdf")
+    ) { uri ->
+        if (uri != null) onWritePdfToDevice(uri)
+        else onResetShareState()
+    }
+
     LaunchedEffect(shareState) {
-        if (shareState is ShareState.Ready) {
-            val intent = Intent(Intent.ACTION_SEND).apply {
-                type = "application/pdf"
-                putExtra(Intent.EXTRA_STREAM, shareState.uri)
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        when (shareState) {
+            is ShareState.Ready -> {
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = "application/pdf"
+                    putExtra(Intent.EXTRA_STREAM, shareState.uri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                context.startActivity(Intent.createChooser(intent, "Compartir PDF"))
+                onResetShareState()
             }
-            context.startActivity(Intent.createChooser(intent, "Compartir PDF"))
-            onResetShareState()
+            is ShareState.ReadyImages -> {
+                val intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+                    type = "image/jpeg"
+                    putParcelableArrayListExtra(
+                        Intent.EXTRA_STREAM,
+                        ArrayList(shareState.uris)
+                    )
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                context.startActivity(Intent.createChooser(intent, "Compartir imágenes"))
+                onResetShareState()
+            }
+            is ShareState.ReadyExport -> {
+                exportLauncher.launch(shareState.suggestedName)
+                // El estado se resetea en writePdfToDevice o si el usuario cancela
+            }
+            else -> Unit
         }
     }
 
+    // ── Diálogo de renombrar ──────────────────────────────────────────────────
     if (showRenameDialog) {
         AlertDialog(
             onDismissRequest = { showRenameDialog = false },
@@ -186,41 +224,43 @@ fun PreviewScreenContent(
         )
     }
 
+    // ── Share bottom sheet ────────────────────────────────────────────────────
     if (showShareSheet) {
         ModalBottomSheet(
             onDismissRequest = { showShareSheet = false },
             sheetState       = shareSheetState,
-            containerColor   = MaterialTheme.colorScheme.surface
+            containerColor   = MaterialTheme.colorScheme.surface,
+            shape            = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .padding(bottom = 32.dp)
-            ) {
-                Text("Exportar documento",
-                    fontWeight = FontWeight.Bold, fontSize = 16.sp,
-                    modifier = Modifier.padding(bottom = 12.dp))
-                HorizontalDivider(color = MaterialTheme.colorScheme.outline, thickness = 0.5.dp)
-                Spacer(Modifier.height(8.dp))
-                ShareOptionRow(Icons.Default.PictureAsPdf, "Compartir como PDF", Color(0xFFE53935)) {
+            ShareBottomSheetContent(
+                isLoading     = shareState is ShareState.Loading,
+                onSharePdf    = {
                     scope.launch { shareSheetState.hide() }.invokeOnCompletion {
                         showShareSheet = false; onShare()
                     }
-                }
-                ShareOptionRow(Icons.Default.Draw, "Firmar documento", PlazoOlive) {
+                },
+                onShareImages = {
+                    scope.launch { shareSheetState.hide() }.invokeOnCompletion {
+                        showShareSheet = false; onShareImages()
+                    }
+                },
+                onExportPdf   = {
+                    scope.launch { shareSheetState.hide() }.invokeOnCompletion {
+                        showShareSheet = false; onExportPdf()
+                    }
+                },
+                onSign        = {
                     scope.launch { shareSheetState.hide() }.invokeOnCompletion {
                         showShareSheet = false; onSign()
                     }
                 }
-            }
+            )
         }
     }
 
     Scaffold(
         contentWindowInsets = WindowInsets(0),
         topBar = {
-            // navigationBarsPadding en el Column externo → Scaffold mide alto correcto desde frame 1
             Column(
                 modifier = Modifier
                     .background(MaterialTheme.colorScheme.surface)
@@ -234,74 +274,123 @@ fun PreviewScreenContent(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(onClick = onBack, modifier = Modifier.size(40.dp)) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver",
-                            modifier = Modifier.size(22.dp))
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack, "Volver",
+                            modifier = Modifier.size(22.dp)
+                        )
                     }
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = documentTitle.ifBlank { "Nuevo Proyecto" },
-                            style = MaterialTheme.typography.titleMedium,
+                            text       = documentTitle.ifBlank { "Nuevo Proyecto" },
+                            style      = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            maxLines = 1
+                            maxLines   = 1
                         )
                         Text(
-                            text = if (isLoading) "Cargando…" else "${pages.size} páginas",
+                            text  = if (isLoading) "Cargando…" else "${pages.size} páginas",
                             style = MaterialTheme.typography.labelSmall,
                             color = PlazoMuted
                         )
                     }
-                    // Siempre reserva el mismo espacio → topBar altura estable
                     IconButton(
                         onClick  = { renameInput = documentTitle; showRenameDialog = true },
                         modifier = Modifier.size(40.dp),
                         enabled  = documentTitle.isNotBlank()
                     ) {
-                        Icon(Icons.Default.Edit, "Renombrar",
-                            tint = if (documentTitle.isNotBlank()) MaterialTheme.colorScheme.onSurface else Color.Transparent,
-                            modifier = Modifier.size(18.dp))
+                        Icon(
+                            Icons.Default.Edit, "Renombrar",
+                            tint     = if (documentTitle.isNotBlank()) MaterialTheme.colorScheme.onSurface
+                                       else Color.Transparent,
+                            modifier = Modifier.size(18.dp)
+                        )
                     }
                 }
-                HorizontalDivider(color = MaterialTheme.colorScheme.outline, thickness = 0.5.dp)
+                HorizontalDivider(
+                    color     = MaterialTheme.colorScheme.outline,
+                    thickness = 0.5.dp
+                )
             }
         },
         bottomBar = {
-            // navigationBarsPadding en Column externo → altura estable desde frame 1
             Column(
                 modifier = Modifier
                     .background(MaterialTheme.colorScheme.surface)
                     .navigationBarsPadding()
             ) {
-                HorizontalDivider(color = MaterialTheme.colorScheme.outline, thickness = 0.5.dp)
+                HorizontalDivider(
+                    color     = MaterialTheme.colorScheme.outline,
+                    thickness = 0.5.dp
+                )
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(64.dp)
-                        .padding(horizontal = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment     = Alignment.CenterVertically
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment     = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    // Botones con enabled fijo para Añadir — siempre activo
-                    BottomBarAction(Icons.Default.AddAPhoto, "Añadir", onClick = onAddMore)
-                    BottomBarAction(
-                        icon    = Icons.Default.PictureAsPdf,
-                        label   = if (shareState is ShareState.Loading) "…" else "PDF",
-                        enabled = pages.isNotEmpty() && shareState !is ShareState.Loading,
-                        tint    = Color(0xFFE53935),
-                        onClick = { showShareSheet = true }
-                    )
-                    BottomBarAction(
-                        icon    = Icons.Default.Draw,
-                        label   = "Firmar",
-                        enabled = pages.isNotEmpty(),
-                        tint    = PlazoOlive,
-                        onClick = onSign
-                    )
-                    BottomBarAction(
-                        icon    = Icons.Default.Share,
-                        label   = "Enviar",
-                        enabled = pages.isNotEmpty(),
-                        onClick = { showShareSheet = true }
-                    )
+                    // Añadir — botón secundario compacto
+                    Row(
+                        modifier = Modifier
+                            .height(52.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .border(
+                                1.dp,
+                                MaterialTheme.colorScheme.outline.copy(alpha = 0.45f),
+                                RoundedCornerShape(14.dp)
+                            )
+                            .clickable { onAddMore() }
+                            .padding(horizontal = 16.dp),
+                        verticalAlignment     = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.AddAPhoto,
+                            contentDescription = "Añadir",
+                            modifier = Modifier.size(18.dp),
+                            tint     = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            "Añadir",
+                            fontWeight = FontWeight.Medium,
+                            fontSize   = 14.sp,
+                            color      = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+
+                    // Compartir — botón primario que ocupa el resto del ancho
+                    val isSharing = shareState is ShareState.Loading
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(52.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(
+                                if (!isSharing && pages.isNotEmpty()) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
+                            )
+                            .clickable(enabled = pages.isNotEmpty() && !isSharing) {
+                                showShareSheet = true
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(
+                            verticalAlignment     = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Share,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                                tint     = MaterialTheme.colorScheme.onPrimary
+                            )
+                            Text(
+                                text       = if (isSharing) "Preparando…" else "Compartir",
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize   = 15.sp,
+                                color      = MaterialTheme.colorScheme.onPrimary
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -324,11 +413,8 @@ fun PreviewScreenContent(
                         verticalArrangement   = Arrangement.spacedBy(10.dp),
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        // Mientras isLoading muestra 6 celdas shimmer con misma estructura
                         if (isLoading) {
-                            items(6) {
-                                ShimmerCard(brush = shimmerBrush)
-                            }
+                            items(6) { ShimmerCard(brush = shimmerBrush) }
                         } else {
                             itemsIndexed(pages) { index, page ->
                                 PageCard(
@@ -349,14 +435,139 @@ fun PreviewScreenContent(
     }
 }
 
-// ─── Shimmer compartido (una sola InfiniteTransition para toda la pantalla) ──
+// ─── Share Bottom Sheet ───────────────────────────────────────────────────────
+
+@Composable
+private fun ShareBottomSheetContent(
+    isLoading: Boolean,
+    onSharePdf: () -> Unit,
+    onShareImages: () -> Unit,
+    onExportPdf: () -> Unit,
+    onSign: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp)
+            .padding(bottom = 36.dp)
+    ) {
+        Text(
+            text       = "Exportar documento",
+            style      = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            modifier   = Modifier.padding(top = 4.dp, bottom = 8.dp)
+        )
+        Text(
+            text     = "Elige cómo quieres compartir o guardar el documento",
+            style    = MaterialTheme.typography.bodySmall,
+            color    = PlazoMuted,
+            modifier = Modifier.padding(bottom = 20.dp)
+        )
+
+        ShareSheetAction(
+            icon     = Icons.Default.PictureAsPdf,
+            iconTint = Color(0xFFD32F2F),
+            iconBg   = Color(0x1AD32F2F),
+            title    = "Compartir como PDF",
+            subtitle = "Envía el documento en formato PDF",
+            enabled  = !isLoading,
+            onClick  = onSharePdf
+        )
+        ShareSheetAction(
+            icon     = Icons.Default.PhotoLibrary,
+            iconTint = Color(0xFF1565C0),
+            iconBg   = Color(0x1A1565C0),
+            title    = "Compartir como imágenes",
+            subtitle = "Comparte cada página por separado",
+            enabled  = !isLoading,
+            onClick  = onShareImages
+        )
+        ShareSheetAction(
+            icon     = Icons.Default.FileDownload,
+            iconTint = Color(0xFF2E7D32),
+            iconBg   = Color(0x1A2E7D32),
+            title    = "Exportar páginas como PDF",
+            subtitle = "Guarda el PDF en tu dispositivo",
+            enabled  = !isLoading,
+            onClick  = onExportPdf
+        )
+
+        HorizontalDivider(
+            modifier  = Modifier.padding(vertical = 8.dp),
+            color     = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
+            thickness = 0.8.dp
+        )
+
+        ShareSheetAction(
+            icon     = Icons.Default.Draw,
+            iconTint = PlazoOlive,
+            iconBg   = PlazoOlive.copy(alpha = 0.12f),
+            title    = "Firmar documento",
+            subtitle = "Añade tu firma al documento",
+            enabled  = !isLoading,
+            onClick  = onSign
+        )
+    }
+}
+
+@Composable
+private fun ShareSheetAction(
+    icon: ImageVector,
+    iconTint: Color,
+    iconBg: Color,
+    title: String,
+    subtitle: String,
+    enabled: Boolean = true,
+    onClick: () -> Unit
+) {
+    val alpha = if (enabled) 1f else 0.4f
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(enabled = enabled) { onClick() }
+            .padding(vertical = 10.dp, horizontal = 4.dp),
+        verticalAlignment     = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(46.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(iconBg.copy(alpha = alpha)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                icon, null,
+                tint     = iconTint.copy(alpha = alpha),
+                modifier = Modifier.size(22.dp)
+            )
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                title,
+                fontWeight = FontWeight.SemiBold,
+                fontSize   = 15.sp,
+                color      = MaterialTheme.colorScheme.onSurface.copy(alpha = alpha)
+            )
+            Text(
+                subtitle,
+                style  = MaterialTheme.typography.bodySmall,
+                color  = PlazoMuted.copy(alpha = alpha),
+                fontSize = 12.sp
+            )
+        }
+    }
+}
+
+// ─── Shimmer ──────────────────────────────────────────────────────────────────
 
 @Composable
 fun rememberShimmerBrush(): Brush {
     val transition = rememberInfiniteTransition(label = "shimmer")
     val offset by transition.animateFloat(
-        initialValue = 0f,
-        targetValue  = 1000f,
+        initialValue  = 0f,
+        targetValue   = 1000f,
         animationSpec = infiniteRepeatable(
             animation  = tween(durationMillis = 1200, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
@@ -374,8 +585,6 @@ fun rememberShimmerBrush(): Brush {
     )
 }
 
-// ─── Celda shimmer (estructura idéntica a PageCard para evitar salto visual) ─
-
 @Composable
 private fun ShimmerCard(brush: Brush) {
     Card(
@@ -387,7 +596,7 @@ private fun ShimmerCard(brush: Brush) {
     }
 }
 
-// ─── Celda real: SubcomposeAsyncImage muestra shimmer mientras carga ─────────
+// ─── PageCard ─────────────────────────────────────────────────────────────────
 
 @Composable
 private fun PageCard(
@@ -426,7 +635,6 @@ private fun PageCard(
                     Box(modifier = Modifier.fillMaxSize().background(shimmerBrush))
                 }
             )
-            // Fila superior: número (izquierda) + eliminar (derecha) — misma altura
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -435,10 +643,9 @@ private fun PageCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment     = Alignment.CenterVertically
             ) {
-                // Badge número
                 Surface(
-                    color  = MaterialTheme.colorScheme.primary,
-                    shape  = CircleShape,
+                    color    = MaterialTheme.colorScheme.primary,
+                    shape    = CircleShape,
                     modifier = Modifier.size(24.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
@@ -450,7 +657,6 @@ private fun PageCard(
                         )
                     }
                 }
-                // Botón eliminar
                 Box(
                     modifier = Modifier
                         .size(24.dp)
@@ -470,60 +676,6 @@ private fun PageCard(
     }
 }
 
-// ─── BottomBarAction ─────────────────────────────────────────────────────────
-
-@Composable
-private fun BottomBarAction(
-    icon: ImageVector,
-    label: String,
-    enabled: Boolean = true,
-    tint: Color = Color.Unspecified,
-    onClick: () -> Unit
-) {
-    val color = when {
-        !enabled                  -> PlazoMuted
-        tint != Color.Unspecified -> tint
-        else                      -> MaterialTheme.colorScheme.onSurface
-    }
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-        modifier = Modifier
-            .clip(RoundedCornerShape(10.dp))
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 8.dp)
-            .width(56.dp)
-    ) {
-        Icon(icon, contentDescription = label,
-            tint = color, modifier = Modifier.size(22.dp))
-        Spacer(Modifier.height(3.dp))
-        Text(label, fontSize = 10.sp, color = color, fontWeight = FontWeight.Medium)
-    }
-}
-
-// ─── ShareOptionRow ───────────────────────────────────────────────────────────
-
-@Composable
-private fun ShareOptionRow(
-    icon: ImageVector,
-    label: String,
-    tint: Color,
-    onClick: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .clickable { onClick() }
-            .padding(vertical = 14.dp, horizontal = 8.dp),
-        verticalAlignment     = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(24.dp))
-        Text(label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-    }
-}
-
 // ─── Estado vacío ─────────────────────────────────────────────────────────────
 
 @Composable
@@ -533,13 +685,17 @@ private fun EmptyPreviewState(onAddMore: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Icon(Icons.Default.FilterFrames, null,
+        Icon(
+            Icons.Default.FilterFrames, null,
             modifier = Modifier.size(64.dp),
-            tint = PlazoMuted.copy(alpha = 0.2f))
+            tint     = PlazoMuted.copy(alpha = 0.2f)
+        )
         Spacer(Modifier.height(16.dp))
-        Text("No hay imágenes",
+        Text(
+            "No hay imágenes",
             style = MaterialTheme.typography.titleMedium,
-            color = PlazoMuted)
+            color = PlazoMuted
+        )
         Spacer(Modifier.height(24.dp))
         Button(onClick = onAddMore, shape = RoundedCornerShape(12.dp)) {
             Icon(Icons.Default.Add, null, modifier = Modifier.size(16.dp))
@@ -559,7 +715,11 @@ private fun AddImageCard(onClick: () -> Unit) {
             .aspectRatio(0.75f)
             .clip(RoundedCornerShape(12.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-            .border(1.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+            .border(
+                1.5.dp,
+                MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
+                RoundedCornerShape(12.dp)
+            )
             .clickable { onClick() },
         contentAlignment = Alignment.Center
     ) {
@@ -567,8 +727,7 @@ private fun AddImageCard(onClick: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            Icon(Icons.Default.Add, null,
-                modifier = Modifier.size(32.dp), tint = PlazoMuted)
+            Icon(Icons.Default.Add, null, modifier = Modifier.size(32.dp), tint = PlazoMuted)
             Text("Añadir", style = MaterialTheme.typography.bodySmall, color = PlazoMuted)
         }
     }

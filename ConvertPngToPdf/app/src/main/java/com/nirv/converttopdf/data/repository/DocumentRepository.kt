@@ -33,10 +33,11 @@ class DocumentRepository(
         val folder = documentFolder(docId)
         folder.mkdirs()
         Log.d(TAG, "createDocument: carpeta=${folder.absolutePath}")
+        val ts = System.currentTimeMillis()
         bitmaps.forEachIndexed { i, bitmap ->
-            val file = File(folder, "page_$i.jpg")
+            val file = File(folder, "page_${ts}_${i}.jpg")
             FileOutputStream(file).use { bitmap.compress(Bitmap.CompressFormat.JPEG, 90, it) }
-            Log.d(TAG, "  page_$i.jpg guardado (${file.length()} bytes)")
+            Log.d(TAG, "  ${file.name} guardado (${file.length()} bytes)")
             dao.insertPage(
                 DocumentPageEntity(documentId = docId, imagePath = file.absolutePath, pageOrder = i)
             )
@@ -52,11 +53,12 @@ class DocumentRepository(
         Log.d(TAG, "addPagesToDocument: docId=$docId, páginas existentes=$startOrder, nuevas=${bitmaps.size}")
         val folder = documentFolder(docId)
         folder.mkdirs()
+        val ts = System.currentTimeMillis()
         bitmaps.forEachIndexed { i, bitmap ->
             val order = startOrder + i
-            val file  = File(folder, "page_$order.jpg")
+            val file  = File(folder, "page_${ts}_${i}.jpg")
             FileOutputStream(file).use { bitmap.compress(Bitmap.CompressFormat.JPEG, 90, it) }
-            Log.d(TAG, "  page_$order.jpg guardado (${file.length()} bytes)")
+            Log.d(TAG, "  ${file.name} guardado (${file.length()} bytes)")
             dao.insertPage(
                 DocumentPageEntity(documentId = docId, imagePath = file.absolutePath, pageOrder = order)
             )

@@ -8,6 +8,8 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
@@ -61,15 +63,19 @@ private fun isMainTab(dest: Any?): Boolean =
 
 private val TRANSITION_MS = 320
 
-// Transición estándar: desliza desde la derecha con fade
+// Transición estándar: nueva pantalla entra desde el borde derecho, la anterior retrocede con parallax
 private val pushTransition: ContentTransform
-    get() = (slideInHorizontally(tween(TRANSITION_MS)) { it / 2 } + fadeIn(tween(TRANSITION_MS))) togetherWith
-            (slideOutHorizontally(tween(TRANSITION_MS)) { -it / 6 } + fadeOut(tween(TRANSITION_MS / 2)))
+    get() = (slideInHorizontally(tween(TRANSITION_MS, easing = FastOutSlowInEasing)) { it } +
+             fadeIn(tween(TRANSITION_MS, easing = FastOutSlowInEasing))) togetherWith
+            (slideOutHorizontally(tween(TRANSITION_MS, easing = FastOutSlowInEasing)) { -it / 3 } +
+             fadeOut(tween(TRANSITION_MS / 3)))
 
-// Regreso: desliza hacia la derecha con fade
+// Regreso: pantalla actual sale por la derecha, la anterior vuelve con parallax desde la izquierda
 private val popTransition: ContentTransform
-    get() = (slideInHorizontally(tween(TRANSITION_MS)) { -it / 6 } + fadeIn(tween(TRANSITION_MS))) togetherWith
-            (slideOutHorizontally(tween(TRANSITION_MS)) { it / 2 } + fadeOut(tween(TRANSITION_MS / 2)))
+    get() = (slideInHorizontally(tween(TRANSITION_MS, easing = FastOutSlowInEasing)) { -it / 3 } +
+             fadeIn(tween(TRANSITION_MS, easing = FastOutSlowInEasing))) togetherWith
+            (slideOutHorizontally(tween(TRANSITION_MS, easing = FastOutSlowInEasing)) { it } +
+             fadeOut(tween(TRANSITION_MS / 3)))
 
 // Transición para ImageEdit: sube desde abajo con fade (evita el "salto" de colores)
 private val sheetEnterTransition: ContentTransform
@@ -126,10 +132,15 @@ fun AppNavHost() {
             }
         }
     ) { paddingValues ->
+        val animatedBottomPadding by animateDpAsState(
+            targetValue   = if (isMainTab(currentDest)) paddingValues.calculateBottomPadding() else 0.dp,
+            animationSpec = tween(durationMillis = TRANSITION_MS, easing = FastOutSlowInEasing),
+            label         = "nav_bar_padding"
+        )
         Box(modifier = Modifier.padding(
             PaddingValues(
                 top    = paddingValues.calculateTopPadding(),
-                bottom = if (isMainTab(currentDest)) paddingValues.calculateBottomPadding() else 0.dp
+                bottom = animatedBottomPadding
             )
         )) {
             NavDisplay(
