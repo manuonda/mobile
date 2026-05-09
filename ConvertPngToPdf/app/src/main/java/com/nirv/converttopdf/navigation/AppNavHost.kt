@@ -117,8 +117,8 @@ fun AppNavHost() {
                     onFiles = {
                         if (currentDest !is DirectoryFiles) {
                             backStack.clear()
-                            backStack.add(Home)
-                            backStack.add(DirectoryFiles)
+                            backStack.add(Home) // pone como base para volver
+                            backStack.add(DirectoryFiles) // pone
                         }
                     },
                     onSettings = {

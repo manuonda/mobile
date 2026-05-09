@@ -1,5 +1,6 @@
 package com.nirv.converttopdf.ui.preview
 
+import android.content.ClipData
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -171,24 +172,33 @@ fun PreviewScreenContent(
     LaunchedEffect(shareState) {
         when (shareState) {
             is ShareState.Ready -> {
+                val uri = shareState.uri
                 val intent = Intent(Intent.ACTION_SEND).apply {
-                    type = "application/pdf"
-                    putExtra(Intent.EXTRA_STREAM, shareState.uri)
+                    type     = "application/pdf"
+                    clipData = ClipData.newRawUri("PDF", uri)
+                    putExtra(Intent.EXTRA_STREAM, uri)
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
-                context.startActivity(Intent.createChooser(intent, "Compartir PDF"))
+                val chooser = Intent.createChooser(intent, "Compartir PDF").apply {
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                context.startActivity(chooser)
                 onResetShareState()
             }
             is ShareState.ReadyImages -> {
+                val uris = ArrayList(shareState.uris)
                 val intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
-                    type = "image/jpeg"
-                    putParcelableArrayListExtra(
-                        Intent.EXTRA_STREAM,
-                        ArrayList(shareState.uris)
-                    )
+                    type     = "image/jpeg"
+                    clipData = ClipData.newRawUri("", uris.first()).also { clip ->
+                        uris.drop(1).forEach { clip.addItem(ClipData.Item(it)) }
+                    }
+                    putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
-                context.startActivity(Intent.createChooser(intent, "Compartir imágenes"))
+                val chooser = Intent.createChooser(intent, "Compartir imágenes").apply {
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                context.startActivity(chooser)
                 onResetShareState()
             }
             is ShareState.ReadyExport -> {

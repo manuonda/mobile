@@ -11,12 +11,12 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.nirv.converttopdf.data.db.dao.DocumentDao
 import com.nirv.converttopdf.data.db.entity.DocumentEntity
 import com.nirv.converttopdf.data.db.entity.DocumentPageEntity
-import com.nirv.converttopdf.data.db.entity.DocumentStatus
+import com.nirv.converttopdf.data.db.entity.DocumentType
 
-class DocumentStatusConverter {
-    @TypeConverter fun fromStatus(status: DocumentStatus): String = status.name
-    @TypeConverter fun toStatus(value: String): DocumentStatus =
-        runCatching { DocumentStatus.valueOf(value) }.getOrDefault(DocumentStatus.DRAFT)
+class DocumentTypeConverter {
+    @TypeConverter fun fromType(type: DocumentType): String = type.name
+    @TypeConverter fun toType(value: String): DocumentType =
+        runCatching { DocumentType.valueOf(value) }.getOrDefault(DocumentType.PROJECT)
 }
 
 private val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -25,12 +25,20 @@ private val MIGRATION_1_2 = object : Migration(1, 2) {
     }
 }
 
+private val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE documents ADD COLUMN type TEXT NOT NULL DEFAULT 'PROJECT'")
+        db.execSQL("ALTER TABLE documents ADD COLUMN pdfPath TEXT")
+        db.execSQL("ALTER TABLE documents ADD COLUMN parentProjectId INTEGER")
+    }
+}
+
 @Database(
-    entities  = [DocumentEntity::class, DocumentPageEntity::class],
-    version   = 2,
+    entities     = [DocumentEntity::class, DocumentPageEntity::class],
+    version      = 3,
     exportSchema = false
 )
-@TypeConverters(DocumentStatusConverter::class)
+@TypeConverters(DocumentTypeConverter::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun documentDao(): DocumentDao
 
@@ -44,7 +52,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "convert_pdf_db"
                 )
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .build().also { INSTANCE = it }
             }
     }

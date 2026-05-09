@@ -4,10 +4,10 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Log
-import androidx.compose.animation.core.withInfiniteAnimationFrameMillis
 import com.nirv.converttopdf.data.db.dao.DocumentDao
 import com.nirv.converttopdf.data.db.entity.DocumentEntity
 import com.nirv.converttopdf.data.db.entity.DocumentPageEntity
+import com.nirv.converttopdf.data.db.entity.DocumentType
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -157,7 +157,7 @@ class DocumentRepository(
         dao.getDocumentById(docId)
 
     suspend fun markAsExported(docId: Long) {
-        dao.updateStatus(docId, com.nirv.converttopdf.data.db.entity.DocumentStatus.EXPORTED.name)
+        dao.updateType(docId, DocumentType.EXPORTED.name)
     }
 
     // ── Ruta de carpeta de un documento ──────────────────────────────────────

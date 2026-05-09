@@ -1,33 +1,25 @@
 package com.nirv.converttopdf.ui.home
 
+import android.content.ClipData
+import android.content.Intent
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.core.content.FileProvider
 import com.nirv.converttopdf.data.db.entity.DocumentEntity
-import com.nirv.converttopdf.data.db.entity.DocumentStatus
-import com.nirv.converttopdf.ui.home.components.HomeActionsGrid
-import com.nirv.converttopdf.ui.home.components.HomeHeader
-import com.nirv.converttopdf.ui.home.components.RecentSectionHeader
+import com.nirv.converttopdf.data.db.entity.DocumentType
+import com.nirv.converttopdf.ui.home.components.*
 import com.nirv.converttopdf.ui.theme.ConvertPngToPdfTheme
-import com.nirv.converttopdf.ui.theme.PlazoMuted
+import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import java.io.File
 
 @Composable
 fun HomeScreen(
@@ -40,14 +32,15 @@ fun HomeScreen(
     val draftDocs by viewModel.draftDocuments.collectAsState()
 
     HomeScreenContent(
-        draftDocs = draftDocs,
-        onScanNew = onScanNew,
-        onFiles = onFiles,
-        onSettings = onSettings,
+        draftDocs    = draftDocs,
+        onScanNew    = onScanNew,
+        onFiles      = onFiles,
+        onSettings   = onSettings,
         onDraftClick = onDraftClick,
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreenContent(
     draftDocs: List<DocumentEntity>,
@@ -56,15 +49,69 @@ fun HomeScreenContent(
     onSettings: () -> Unit,
     onDraftClick: (Long) -> Unit,
 ) {
-    var searchQuery by remember { mutableStateOf("") }
+    val context       = LocalContext.current
+    val scope         = rememberCoroutineScope()
+    var searchQuery   by remember { mutableStateOf("") }
+    var selectedPdf   by remember { mutableStateOf<DocumentEntity?>(null) }
+    val pdfSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-
-    var filteredDrafts = remember(draftDocs, searchQuery){
+    val filteredDrafts = remember(draftDocs, searchQuery) {
         val sorted = draftDocs.sortedByDescending { it.createdAt }
-        if(searchQuery.isBlank()) sorted.take(10) // Mostramos mas proyectos
+        if (searchQuery.isBlank()) sorted.take(10)
         else sorted.filter { it.name.contains(searchQuery, ignoreCase = true) }
     }
 
+    // ── Bottom sheet PDF ──────────────────────────────────────────────────────
+    selectedPdf?.let { pdf ->
+        PdfOptionsBottomSheet(
+            name       = pdf.name,
+            sheetState = pdfSheetState,
+            onDismiss  = { selectedPdf = null },
+            onShare    = {
+                scope.launch { pdfSheetState.hide() }.invokeOnCompletion {
+                    selectedPdf = null
+                    pdf.pdfPath?.let { path ->
+                        val uri = FileProvider.getUriForFile(
+                            context, "${context.packageName}.provider", File(path)
+                        )
+                        val intent = Intent(Intent.ACTION_SEND).apply {
+                            type     = "application/pdf"
+                            clipData = ClipData.newRawUri("PDF", uri)
+                            putExtra(Intent.EXTRA_STREAM, uri)
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        context.startActivity(
+                            Intent.createChooser(intent, "Compartir PDF").apply {
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                        )
+                    }
+                }
+            },
+            onOpen     = {
+                scope.launch { pdfSheetState.hide() }.invokeOnCompletion {
+                    selectedPdf = null
+                    pdf.pdfPath?.let { path ->
+                        val uri = FileProvider.getUriForFile(
+                            context, "${context.packageName}.provider", File(path)
+                        )
+                        val intent = Intent(Intent.ACTION_VIEW).apply {
+                            clipData = ClipData.newRawUri("PDF", uri)
+                            setDataAndType(uri, "application/pdf")
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        context.startActivity(
+                            Intent.createChooser(intent, "Abrir PDF").apply {
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                        )
+                    }
+                }
+            }
+        )
+    }
+
+    // ── Contenido ─────────────────────────────────────────────────────────────
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -74,32 +121,30 @@ fun HomeScreenContent(
 
         item {
             HomeActionsGrid(
-                onScanNew = onScanNew,
-                onFiles = onFiles,
-                onSettings = onSettings)
-        }
-
-
-        // Section Recientes
-        item{
-            RecentSectionHeader (
-                onViewAll = onFiles
+                onScanNew  = onScanNew,
+                onFiles    = onFiles,
+                onSettings = onSettings
             )
         }
 
-        if(filteredDrafts.isEmpty()) {
+        item { RecentSectionHeader(onViewAll = onFiles) }
+
+        if (filteredDrafts.isEmpty()) {
             item {
                 EmptyRecentState(
-                    isSearch = searchQuery.isNotBlank(),
+                    isSearch    = searchQuery.isNotBlank(),
                     searchQuery = searchQuery,
-                    onScanNew = onScanNew
+                    onScanNew   = onScanNew
                 )
             }
         } else {
-            items(filteredDrafts) { draft ->
-                DraftRow(
-                    draft = draft,
-                    onClick = { onDraftClick(draft.id)}
+            items(filteredDrafts, key = { it.id }) { doc ->
+                DocumentRow(
+                    doc     = doc,
+                    onClick = {
+                        if (doc.type == DocumentType.EXPORTED) selectedPdf = doc
+                        else onDraftClick(doc.id)
+                    }
                 )
             }
         }
@@ -108,147 +153,32 @@ fun HomeScreenContent(
     }
 }
 
-
-
-
-
-@Composable
-private fun DraftRow(
-    draft: DocumentEntity,
-    onClick: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 4.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .background(MaterialTheme.colorScheme.surface)
-            .clickable { onClick() }
-            .padding(14.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        val isExported = draft.status == DocumentStatus.EXPORTED
-        Box(
-            modifier = Modifier
-                .size(44.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(
-                    if (isExported) MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.7f)
-                    else MaterialTheme.colorScheme.primaryContainer
-                ),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = if (isExported) Icons.Default.PictureAsPdf else Icons.Default.Edit,
-                contentDescription = null,
-                tint = if (isExported) MaterialTheme.colorScheme.error
-                       else MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(24.dp)
-            )
-        }
-        Spacer(Modifier.width(14.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = draft.name,
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    modifier = Modifier.weight(1f, fill = false)
-                )
-                Spacer(Modifier.width(6.dp))
-                Surface(
-                    shape = RoundedCornerShape(4.dp),
-                    color = if (isExported) MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.6f)
-                            else MaterialTheme.colorScheme.secondaryContainer
-                ) {
-                    Text(
-                        text = if (isExported) "PDF" else "Proyecto",
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (isExported) MaterialTheme.colorScheme.error
-                                else MaterialTheme.colorScheme.secondary,
-                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
-                    )
-                }
-            }
-            Spacer(Modifier.height(2.dp))
-            Text(
-                text = "${draft.pageCount} ${if (draft.pageCount == 1) "página" else "páginas"}  •  ${formatDate(draft.createdAt)}",
-                style = MaterialTheme.typography.bodySmall,
-                color = PlazoMuted
-            )
-        }
-        Icon(
-            imageVector = Icons.Default.ChevronRight,
-            contentDescription = null,
-            tint = PlazoMuted,
-            modifier = Modifier.size(20.dp)
-        )
-    }
-}
-
-@Composable
-private fun EmptyRecentState(
-    isSearch: Boolean,
-    searchQuery: String,
-    onScanNew: () -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(40.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Icon(
-            imageVector = if (isSearch) Icons.Default.SearchOff else Icons.Default.PictureAsPdf,
-            contentDescription = null,
-            modifier = Modifier.size(64.dp),
-            tint = PlazoMuted.copy(alpha = 0.3f)
-        )
-        Spacer(Modifier.height(16.dp))
-        Text(
-            text = if (isSearch) "No se encontraron resultados para \"$searchQuery\"" else "No hay archivos recientes",
-            style = MaterialTheme.typography.bodyMedium,
-            color = PlazoMuted,
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center
-        )
-        if (!isSearch) {
-            Spacer(Modifier.height(24.dp))
-            Button(
-                onClick = onScanNew,
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Icon(Icons.Default.Add, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text("Crear mi primer PDF")
-            }
-        }
-    }
-}
-
-
-
-private fun formatDate(timestamp: Long): String {
-    val sdf = SimpleDateFormat("dd MMM, HH:mm", Locale.getDefault())
-    return sdf.format(Date(timestamp))
-}
-
 @Preview(showBackground = true)
 @Composable
 fun HomeScreenPreview() {
     ConvertPngToPdfTheme {
         HomeScreenContent(
             draftDocs = listOf(
-                DocumentEntity(id = 1, name = "Proyecto de prueba", pageCount = 3, createdAt = System.currentTimeMillis()),
-                DocumentEntity(id = 2, name = "Otro documento", pageCount = 1, createdAt = System.currentTimeMillis())
+                DocumentEntity(
+                    id        = 1,
+                    name      = "Proyecto de prueba",
+                    pageCount = 3,
+                    createdAt = System.currentTimeMillis(),
+                    type      = DocumentType.PROJECT
+                ),
+                DocumentEntity(
+                    id        = 2,
+                    name      = "Factura_Mayo.pdf",
+                    pageCount = 0,
+                    createdAt = System.currentTimeMillis(),
+                    type      = DocumentType.EXPORTED,
+                    pdfPath   = "/data/user/0/com.nirv.converttopdf/files/Factura_Mayo.pdf"
+                )
             ),
-            onScanNew = {},
-            onFiles = {},
-            onSettings = {},
-            onDraftClick = {}
+            onScanNew    = {},
+            onFiles      = {},
+            onSettings   = {},
+            onDraftClick = {},
         )
     }
 }
