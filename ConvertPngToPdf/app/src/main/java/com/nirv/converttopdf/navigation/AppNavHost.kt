@@ -46,6 +46,7 @@ import androidx.navigation3.ui.NavDisplay
 import com.nirv.converttopdf.ui.capture.CaptureScreen
 import com.nirv.converttopdf.ui.export.ExportScreen
 import com.nirv.converttopdf.ui.files.DirectryFileScreen
+import com.nirv.converttopdf.ui.pdfviewer.PdfViewerScreen
 import com.nirv.converttopdf.ui.home.HomeScreen
 import com.nirv.converttopdf.ui.preview.PreviewScreen
 import com.nirv.converttopdf.ui.settings.SettingsScreen
@@ -169,9 +170,8 @@ fun AppNavHost() {
                                     backStack.add(Home)
                                     backStack.add(Settings)
                                 },
-                                onDraftClick = { docId ->
-                                    backStack.add(Preview(docId))
-                                },
+                                onDraftClick = { docId -> backStack.add(Preview(docId)) },
+                                onPdfOpen    = { pdfPath, title -> backStack.add(PdfViewer(pdfPath = pdfPath, title = title)) }
                             )
                         }
 
@@ -286,7 +286,16 @@ fun AppNavHost() {
                         is DirectoryFiles -> NavEntry(key = DirectoryFiles) {
                             DirectryFileScreen(
                                 onBack       = { backStack.removeLastOrNull() },
-                                onDraftClick = { docId -> backStack.add(Preview(docId)) }
+                                onDraftClick = { docId -> backStack.add(Preview(docId)) },
+                                onPdfOpen    = { pdfPath, title -> backStack.add(PdfViewer(pdfPath = pdfPath, title = title)) }
+                            )
+                        }
+
+                        is PdfViewer -> NavEntry(key = key) {
+                            PdfViewerScreen(
+                                pdfPath = key.pdfPath,
+                                title   = key.title,
+                                onBack  = { backStack.removeLastOrNull() }
                             )
                         }
 

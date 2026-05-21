@@ -6,7 +6,9 @@ import android.util.Log
 import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.nirv.converttopdf.data.db.entity.DocumentEntity
 import com.nirv.converttopdf.data.db.entity.DocumentPageEntity
+import com.nirv.converttopdf.data.db.entity.DocumentType
 import com.nirv.converttopdf.data.repository.DocumentRepository
 import com.nirv.converttopdf.domain.usecase.ExportToPdfUseCase
 import kotlinx.coroutines.Dispatchers
@@ -25,6 +27,7 @@ sealed class ShareState {
     data class  Ready(val uri: Uri)              : ShareState()
     data class  ReadyImages(val uris: List<Uri>) : ShareState()
     data class  ReadyExport(val uri: Uri, val suggestedName: String) : ShareState()
+    data class  Saved(val name: String)          : ShareState()
     data class  Error(val msg: String)           : ShareState()
 }
 
@@ -50,9 +53,13 @@ class PreviewViewModel(
     private val _pageVersions = MutableStateFlow<Map<Long, Long>>(emptyMap())
     val pageVersions: StateFlow<Map<Long, Long>> = _pageVersions.asStateFlow()
 
+    private val _exportedDocument = MutableStateFlow<DocumentEntity?>(null)
+    val exportedDocument: StateFlow<DocumentEntity?> = _exportedDocument.asStateFlow()
+
     init {
         observePages()
         observeDocumentName()
+        observeExportedDocument()
     }
 
     private fun observePages() {
@@ -69,6 +76,18 @@ class PreviewViewModel(
         viewModelScope.launch {
             documentRepository.allDocuments.collect { docs ->
                 docs.find { it.id == documentId }?.let { _documentName.value = it.name }
+            }
+        }
+    }
+
+    private fun observeExportedDocument() {
+        viewModelScope.launch {
+            // Derivamos de allDocuments para evitar problemas de serialización del enum.
+            // Tomamos el más reciente (mayor createdAt) cuando hay varias versiones.
+            documentRepository.allDocuments.collect { docs ->
+                _exportedDocument.value = docs
+                    .filter { it.parentProjectId == documentId && it.type == DocumentType.EXPORTED }
+                    .maxByOrNull { it.createdAt }
             }
         }
     }
@@ -99,10 +118,12 @@ class PreviewViewModel(
     fun shareAsPdf() {
         val paths = _pages.value.map { it.imagePath }
         if (paths.isEmpty()) return
-        Log.d(TAG, "shareAsPdf: ${paths.size} páginas")
+        // Prioridad: nombre del doc exportado configurado → nombre del proyecto
+        val name = _exportedDocument.value?.name ?: _documentName.value.ifBlank { null }
+        Log.d(TAG, "shareAsPdf: ${paths.size} páginas, name=$name")
         viewModelScope.launch {
             _shareState.value = ShareState.Loading
-            exportToPdfUseCase(paths, _documentName.value.ifBlank { null })
+            exportToPdfUseCase(paths, name)
                 .onSuccess { uri ->
                     Log.d(TAG, "shareAsPdf: uri=$uri")
                     _shareState.value = ShareState.Ready(uri)
@@ -141,16 +162,55 @@ class PreviewViewModel(
         }
     }
 
-    // ── Exportar PDF a dispositivo (ACTION_CREATE_DOCUMENT) ───────────────────
-    fun exportPdfToDevice() {
+    // ── Guardar PDF internamente + upsert en BD ───────────────────────────────
+    fun savePdfToApp(customName: String = "") {
         val paths = _pages.value.map { it.imagePath }
         if (paths.isEmpty()) return
-        val name = _documentName.value.ifBlank { "documento" }
+        val name = customName.ifBlank { _documentName.value.ifBlank { "documento" } }
+        viewModelScope.launch {
+            _shareState.value = ShareState.Loading
+            exportToPdfUseCase(paths, name)
+                .onSuccess { tempUri ->
+                    try {
+                        val exportDir = File(context.filesDir, "exports/$documentId").also { it.mkdirs() }
+                        val safeName  = name.replace(Regex("[\\\\/:*?\"<>|]"), "_")
+                        val destFile  = File(exportDir, "$safeName.pdf")
+                        context.contentResolver.openInputStream(tempUri)?.use { input ->
+                            destFile.outputStream().use { output -> input.copyTo(output) }
+                        }
+                        documentRepository.upsertExportedDocument(
+                            name            = name,
+                            pdfPath         = destFile.absolutePath,
+                            pageCount       = _pages.value.size,
+                            parentProjectId = documentId
+                        )
+                        Log.d(TAG, "savePdfToApp: guardado en ${destFile.absolutePath}")
+                        _shareState.value = ShareState.Saved(name)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "savePdfToApp: error al copiar/guardar", e)
+                        _shareState.value = ShareState.Error(e.message ?: "Error al guardar PDF")
+                    }
+                }
+                .onFailure { e ->
+                    Log.e(TAG, "savePdfToApp: error al generar", e)
+                    _shareState.value = ShareState.Error(e.message ?: "Error al generar PDF")
+                }
+        }
+    }
+
+    // ── Exportar PDF a dispositivo (ACTION_CREATE_DOCUMENT) ───────────────────
+    fun exportPdfToDevice(customName: String = "") {
+        val paths = _pages.value.map { it.imagePath }
+        if (paths.isEmpty()) return
+        // Prioridad: nombre pasado por parámetro → nombre doc exportado → nombre proyecto
+        val name = customName.ifBlank {
+            _exportedDocument.value?.name ?: _documentName.value.ifBlank { "documento" }
+        }
         viewModelScope.launch {
             _shareState.value = ShareState.Loading
             exportToPdfUseCase(paths, name)
                 .onSuccess { uri ->
-                    Log.d(TAG, "exportPdfToDevice: uri=$uri")
+                    Log.d(TAG, "exportPdfToDevice: uri=$uri, name=$name")
                     _shareState.value = ShareState.ReadyExport(uri, "$name.pdf")
                 }
                 .onFailure { e ->
@@ -171,6 +231,15 @@ class PreviewViewModel(
                     }
                 }
                 Log.d(TAG, "writePdfToDevice: guardado en $destUri")
+                val exportName = exportState.suggestedName.removeSuffix(".pdf")
+                // upsert: actualiza si ya existe un exportado para este proyecto
+                documentRepository.upsertExportedDocument(
+                    name            = exportName,
+                    pdfPath         = destUri.toString(),
+                    pageCount       = _pages.value.size,
+                    parentProjectId = documentId
+                )
+                Log.d(TAG, "writePdfToDevice: registro upserted en BD, name=$exportName")
             } catch (e: Exception) {
                 Log.e(TAG, "writePdfToDevice: error", e)
             }

@@ -42,7 +42,6 @@ import androidx.compose.material.icons.filled.AddAPhoto
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material.icons.filled.Draw
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FilterFrames
@@ -64,6 +63,9 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -93,6 +95,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
+import com.nirv.converttopdf.data.db.entity.DocumentEntity
 import com.nirv.converttopdf.data.db.entity.DocumentPageEntity
 import kotlinx.coroutines.launch
 import com.nirv.converttopdf.ui.theme.PlazoMuted
@@ -113,11 +116,12 @@ fun PreviewScreen(
         parameters = { parametersOf(documentId) }
     )
 ) {
-    val pages        by viewModel.pages.collectAsStateWithLifecycle()
-    val shareState   by viewModel.shareState.collectAsStateWithLifecycle()
-    val documentName by viewModel.documentName.collectAsStateWithLifecycle()
-    val isLoading    by viewModel.isLoading.collectAsStateWithLifecycle()
-    val pageVersions by viewModel.pageVersions.collectAsStateWithLifecycle()
+    val pages            by viewModel.pages.collectAsStateWithLifecycle()
+    val shareState       by viewModel.shareState.collectAsStateWithLifecycle()
+    val documentName     by viewModel.documentName.collectAsStateWithLifecycle()
+    val isLoading        by viewModel.isLoading.collectAsStateWithLifecycle()
+    val pageVersions     by viewModel.pageVersions.collectAsStateWithLifecycle()
+    val exportedDocument by viewModel.exportedDocument.collectAsStateWithLifecycle()
 
     PreviewScreenContent(
         pages              = pages,
@@ -125,6 +129,7 @@ fun PreviewScreen(
         documentTitle      = documentName,
         isLoading          = isLoading,
         pageVersions       = pageVersions,
+        exportedDocument   = exportedDocument,
         onBack             = onBack,
         onAddMore          = onAddMore,
         onSign             = onSign,
@@ -132,7 +137,8 @@ fun PreviewScreen(
         onDeletePage       = { page -> viewModel.removePage(page) },
         onShare            = { viewModel.shareAsPdf() },
         onShareImages      = { viewModel.shareAsImages() },
-        onExportPdf        = { viewModel.exportPdfToDevice() },
+        onSavePdf          = { name -> viewModel.savePdfToApp(name) },
+        onExportPdf        = { name -> viewModel.exportPdfToDevice(name) },
         onWritePdfToDevice = { uri -> viewModel.writePdfToDevice(uri) },
         onResetShareState  = { viewModel.resetShareState() },
         onTitleChange      = { viewModel.renameDocument(it) }
@@ -147,6 +153,7 @@ fun PreviewScreenContent(
     documentTitle: String,
     isLoading: Boolean = false,
     pageVersions: Map<Long, Long> = emptyMap(),
+    exportedDocument: DocumentEntity? = null,
     onBack: () -> Unit,
     onAddMore: () -> Unit,
     onSign: () -> Unit,
@@ -154,22 +161,26 @@ fun PreviewScreenContent(
     onDeletePage: (DocumentPageEntity) -> Unit,
     onShare: () -> Unit,
     onShareImages: () -> Unit,
-    onExportPdf: () -> Unit,
+    onSavePdf: (String) -> Unit,
+    onExportPdf: (String) -> Unit,
     onWritePdfToDevice: (Uri) -> Unit,
     onResetShareState: () -> Unit,
     onTitleChange: (String) -> Unit
 ) {
-    val context         = LocalContext.current
-    val scope           = rememberCoroutineScope()
-    val shareSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val context          = LocalContext.current
+    val scope            = rememberCoroutineScope()
+    val shareSheetState  = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val snackbarHostState = remember { SnackbarHostState() }
 
     var showRenameDialog by remember { mutableStateOf(false) }
     var renameInput      by remember { mutableStateOf("") }
     var showShareSheet   by remember { mutableStateOf(false) }
     var showDocSettings  by remember { mutableStateOf(false) }
 
-    // PDF export settings (local — se aplican al compartir)
-    var pdfExportName  by remember(documentTitle) { mutableStateOf(documentTitle) }
+    // PDF export settings — inicializa con el doc exportado existente o el nombre del proyecto
+    var pdfExportName  by remember(exportedDocument, documentTitle) {
+        mutableStateOf(exportedDocument?.name ?: documentTitle)
+    }
     var pdfGrayscale   by remember { mutableStateOf(false) }
     var pdfWhiteMargin by remember { mutableStateOf(false) }
     var pdfQuality     by remember { mutableStateOf("Alto") }
@@ -218,7 +229,10 @@ fun PreviewScreenContent(
             }
             is ShareState.ReadyExport -> {
                 exportLauncher.launch(shareState.suggestedName)
-                // El estado se resetea en writePdfToDevice o si el usuario cancela
+            }
+            is ShareState.Saved -> {
+                snackbarHostState.showSnackbar("\"${shareState.name}.pdf\" guardado correctamente")
+                onResetShareState()
             }
             else -> Unit
         }
@@ -253,24 +267,23 @@ fun PreviewScreenContent(
                     },
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor      = MaterialTheme.colorScheme.primary,
-                        unfocusedBorderColor    = MaterialTheme.colorScheme.outline,
-                        focusedContainerColor   = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f),
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                        unfocusedBorderColor    = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                        focusedContainerColor   = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f),
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
                         cursorColor             = MaterialTheme.colorScheme.primary
                     )
                 )
             },
             dismissButton = {
-                OutlinedButton(
-                    onClick = { showRenameDialog = false },
-                    shape   = RoundedCornerShape(50)
+                TextButton(
+                    onClick = { showRenameDialog = false }
                 ) { Text("Cancelar") }
             },
             confirmButton = {
                 Button(
                     onClick  = { onTitleChange(renameInput.trim()); showRenameDialog = false },
                     enabled  = renameInput.trim().isNotBlank(),
-                    shape    = RoundedCornerShape(50)
+                    shape    = RoundedCornerShape(14.dp)
                 ) { Text("Guardar") }
             }
         )
@@ -298,12 +311,8 @@ fun PreviewScreenContent(
                 },
                 onExportPdf   = {
                     scope.launch { shareSheetState.hide() }.invokeOnCompletion {
-                        showShareSheet = false; onExportPdf()
-                    }
-                },
-                onSign        = {
-                    scope.launch { shareSheetState.hide() }.invokeOnCompletion {
-                        showShareSheet = false; onSign()
+                        showShareSheet = false
+                        onExportPdf(pdfExportName.ifBlank { documentTitle })
                     }
                 }
             )
@@ -363,6 +372,15 @@ fun PreviewScreenContent(
                         cursorColor             = MaterialTheme.colorScheme.primary
                     )
                 )
+
+                if (exportedDocument != null) {
+                    Text(
+                        text     = "Ya tienes un PDF guardado para este proyecto",
+                        style    = MaterialTheme.typography.labelSmall,
+                        color    = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(top = 4.dp, start = 4.dp)
+                    )
+                }
 
                 Spacer(Modifier.height(8.dp))
                 HorizontalDivider(
@@ -432,11 +450,17 @@ fun PreviewScreenContent(
                     ) { Text("Cancelar") }
 
                     Button(
-                        onClick  = { showDocSettings = false; showShareSheet = true },
+                        onClick = {
+                            val name = pdfExportName.ifBlank { documentTitle }
+                            showDocSettings = false
+                            onSavePdf(name)
+                        },
                         modifier = Modifier.weight(1f).height(52.dp),
                         shape    = RoundedCornerShape(14.dp),
-                        enabled  = pages.isNotEmpty()
-                    ) { Text("Compartir PDF") }
+                        enabled  = pages.isNotEmpty() && shareState !is ShareState.Loading
+                    ) {
+                        Text(if (exportedDocument != null) "Actualizar PDF" else "Guardar")
+                    }
                 }
             }
         }
@@ -444,6 +468,17 @@ fun PreviewScreenContent(
 
     Scaffold(
         contentWindowInsets = WindowInsets(0),
+        snackbarHost = {
+            SnackbarHost(snackbarHostState) { data ->
+                Snackbar(
+                    snackbarData    = data,
+                    shape           = RoundedCornerShape(12.dp),
+                    containerColor  = MaterialTheme.colorScheme.inverseSurface,
+                    contentColor    = MaterialTheme.colorScheme.inverseOnSurface,
+                    modifier        = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+            }
+        },
         topBar = {
             Column(
                 modifier = Modifier
@@ -646,8 +681,7 @@ private fun ShareBottomSheetContent(
     isLoading: Boolean,
     onSharePdf: () -> Unit,
     onShareImages: () -> Unit,
-    onExportPdf: () -> Unit,
-    onSign: () -> Unit
+    onExportPdf: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -671,7 +705,7 @@ private fun ShareBottomSheetContent(
         ShareSheetAction(
             icon     = Icons.Default.PictureAsPdf,
             iconTint = Color(0xFFD32F2F),
-            iconBg   = Color(0x1AD32F2F),
+            iconBg   = Color(0x18D32F2F),
             title    = "Compartir como PDF",
             subtitle = "Envía el documento en formato PDF",
             enabled  = !isLoading,
@@ -680,7 +714,7 @@ private fun ShareBottomSheetContent(
         ShareSheetAction(
             icon     = Icons.Default.PhotoLibrary,
             iconTint = Color(0xFF1565C0),
-            iconBg   = Color(0x1A1565C0),
+            iconBg   = Color(0x181565C0),
             title    = "Compartir como imágenes",
             subtitle = "Comparte cada página por separado",
             enabled  = !isLoading,
@@ -689,27 +723,11 @@ private fun ShareBottomSheetContent(
         ShareSheetAction(
             icon     = Icons.Default.FileDownload,
             iconTint = Color(0xFF2E7D32),
-            iconBg   = Color(0x1A2E7D32),
+            iconBg   = Color(0x182E7D32),
             title    = "Exportar páginas como PDF",
             subtitle = "Guarda el PDF en tu dispositivo",
             enabled  = !isLoading,
             onClick  = onExportPdf
-        )
-
-        HorizontalDivider(
-            modifier  = Modifier.padding(vertical = 8.dp),
-            color     = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
-            thickness = 0.8.dp
-        )
-
-        ShareSheetAction(
-            icon     = Icons.Default.Draw,
-            iconTint = PlazoOlive,
-            iconBg   = PlazoOlive.copy(alpha = 0.12f),
-            title    = "Firmar documento",
-            subtitle = "Añade tu firma al documento",
-            enabled  = !isLoading,
-            onClick  = onSign
         )
     }
 }
@@ -724,27 +742,27 @@ private fun ShareSheetAction(
     enabled: Boolean = true,
     onClick: () -> Unit
 ) {
-    val alpha = if (enabled) 1f else 0.4f
+    val contentAlpha = if (enabled) 1f else 0.38f
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .clickable(enabled = enabled) { onClick() }
-            .padding(vertical = 10.dp, horizontal = 4.dp),
+            .padding(vertical = 12.dp, horizontal = 4.dp),
         verticalAlignment     = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         Box(
             modifier = Modifier
-                .size(46.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(iconBg.copy(alpha = alpha)),
+                .size(42.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(iconBg),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 icon, null,
-                tint     = iconTint.copy(alpha = alpha),
-                modifier = Modifier.size(22.dp)
+                tint     = iconTint.copy(alpha = contentAlpha),
+                modifier = Modifier.size(20.dp)
             )
         }
         Column(modifier = Modifier.weight(1f)) {
@@ -752,12 +770,12 @@ private fun ShareSheetAction(
                 title,
                 fontWeight = FontWeight.SemiBold,
                 fontSize   = 15.sp,
-                color      = MaterialTheme.colorScheme.onSurface.copy(alpha = alpha)
+                color      = MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha)
             )
             Text(
                 subtitle,
-                style  = MaterialTheme.typography.bodySmall,
-                color  = PlazoMuted.copy(alpha = alpha),
+                style    = MaterialTheme.typography.bodySmall,
+                color    = PlazoMuted.copy(alpha = contentAlpha),
                 fontSize = 12.sp
             )
         }

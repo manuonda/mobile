@@ -59,4 +59,19 @@ interface DocumentDao {
 
     @Query("UPDATE documents SET type = :type WHERE id = :docId")
     suspend fun updateType(docId: Long, type: String)
+
+    @Query("SELECT * FROM documents WHERE parentProjectId = :parentId AND type = 'EXPORTED' LIMIT 1")
+    suspend fun findExportedByParent(parentId: Long): DocumentEntity?
+
+    @Query("SELECT * FROM documents WHERE parentProjectId = :parentId AND type = 'EXPORTED' AND name = :name LIMIT 1")
+    suspend fun findExportedByParentAndName(parentId: Long, name: String): DocumentEntity?
+
+    @Query("SELECT * FROM documents WHERE parentProjectId = :parentId AND type = 'EXPORTED' ORDER BY createdAt DESC LIMIT 1")
+    suspend fun findLatestExportedByParent(parentId: Long): DocumentEntity?
+
+    @Query("SELECT * FROM documents WHERE parentProjectId = :parentId AND type = 'EXPORTED' LIMIT 1")
+    fun getExportedByParentFlow(parentId: Long): Flow<DocumentEntity?>
+
+    @Query("UPDATE documents SET name = :name, pdfPath = :pdfPath, pageCount = :pageCount WHERE id = :docId")
+    suspend fun updateExportedDoc(docId: Long, name: String, pdfPath: String, pageCount: Int)
 }

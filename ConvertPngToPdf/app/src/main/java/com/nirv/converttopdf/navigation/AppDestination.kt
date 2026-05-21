@@ -10,3 +10,4 @@ data object Settings
 data object DirectoryFiles
 data class  ImageEdit(val pageId: Long, val imagePath: String, val documentId: Long)
 data class  PageToolEdit(val pageId: Long, val imagePath: String, val documentId: Long, val initialTool: String = "")
+data class  PdfViewer(val pdfPath: String, val title: String = "")

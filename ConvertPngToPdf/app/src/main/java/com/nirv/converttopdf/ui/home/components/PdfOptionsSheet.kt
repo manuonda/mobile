@@ -67,7 +67,7 @@ fun PdfOptionsBottomSheet(
                 iconTint = Color(0xFF2E7D32),
                 iconBg   = Color(0x1A2E7D32),
                 title    = "Abrir PDF",
-                subtitle = "Abre el archivo con otra aplicación",
+                subtitle = "Visualiza el documento en la app",
                 onClick  = onOpen
             )
         }

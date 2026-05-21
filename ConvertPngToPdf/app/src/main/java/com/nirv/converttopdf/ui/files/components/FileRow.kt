@@ -28,11 +28,14 @@ import java.util.Locale
 
 @Composable
 fun FileRow(
-    doc: DocumentEntity,
-    firstPagePath: String?,
+    doc:              DocumentEntity,
+    firstPagePath:    String?,
     onFavoriteToggle: () -> Unit,
-    onDelete: () -> Unit,
-    onClick: () -> Unit
+    onDelete:         () -> Unit,
+    onClick:          () -> Unit,
+    isSelectionMode:  Boolean  = false,
+    isSelected:       Boolean  = false,
+    onToggleSelect:   () -> Unit = {}
 ) {
     val isPdf = doc.type == DocumentType.EXPORTED
     var showMenu by remember { mutableStateOf(false) }
@@ -54,7 +57,7 @@ fun FileRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onClick() }
+            .clickable { if (isSelectionMode) onToggleSelect() else onClick() }
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -124,35 +127,47 @@ fun FileRow(
             Text(text = subtitle, style = MaterialTheme.typography.bodySmall, color = PlazoMuted)
         }
 
-        IconButton(onClick = onFavoriteToggle, modifier = Modifier.size(36.dp)) {
-            Icon(
-                imageVector = if (doc.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                contentDescription = if (doc.isFavorite) "Quitar favorito" else "Añadir a favoritos",
-                tint = if (doc.isFavorite) MaterialTheme.colorScheme.error else PlazoMuted,
-                modifier = Modifier.size(18.dp)
+        if (isSelectionMode) {
+            Checkbox(
+                checked  = isSelected,
+                onCheckedChange = { onToggleSelect() },
+                colors   = CheckboxDefaults.colors(
+                    checkedColor   = MaterialTheme.colorScheme.primary,
+                    checkmarkColor = MaterialTheme.colorScheme.onPrimary
+                ),
+                modifier = Modifier.size(36.dp)
             )
-        }
-
-        Box {
-            IconButton(onClick = { showMenu = true }, modifier = Modifier.size(36.dp)) {
+        } else {
+            IconButton(onClick = onFavoriteToggle, modifier = Modifier.size(36.dp)) {
                 Icon(
-                    Icons.Default.MoreVert, "Más opciones",
-                    tint = PlazoMuted,
-                    modifier = Modifier.size(18.dp)
+                    imageVector        = if (doc.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                    contentDescription = if (doc.isFavorite) "Quitar favorito" else "Añadir a favoritos",
+                    tint               = if (doc.isFavorite) MaterialTheme.colorScheme.error else PlazoMuted,
+                    modifier           = Modifier.size(18.dp)
                 )
             }
-            DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-                DropdownMenuItem(
-                    text = { Text("Eliminar", color = MaterialTheme.colorScheme.error) },
-                    onClick = { showMenu = false; onDelete() },
-                    leadingIcon = {
-                        Icon(
-                            Icons.Default.Delete, null,
-                            tint = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-                )
+
+            Box {
+                IconButton(onClick = { showMenu = true }, modifier = Modifier.size(36.dp)) {
+                    Icon(
+                        Icons.Default.MoreVert, "Más opciones",
+                        tint     = PlazoMuted,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Eliminar", color = MaterialTheme.colorScheme.error) },
+                        onClick = { showMenu = false; onDelete() },
+                        leadingIcon = {
+                            Icon(
+                                Icons.Default.Delete, null,
+                                tint     = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    )
+                }
             }
         }
     }

@@ -24,6 +24,9 @@ class DocumentRepository(
 ) {
     val allDocuments: Flow<List<DocumentEntity>> = dao.getAllDocuments()
 
+    fun getExportedDocumentFlow(parentProjectId: Long): Flow<DocumentEntity?> =
+        dao.getExportedByParentFlow(parentProjectId)
+
     // ── Crear un documento nuevo con sus páginas ──────────────────────────────
     suspend fun createDocument(name: String, bitmaps: List<Bitmap>): Long {
         Log.d(TAG, "createDocument: nombre='$name', páginas=${bitmaps.size}")
@@ -158,6 +161,45 @@ class DocumentRepository(
 
     suspend fun markAsExported(docId: Long) {
         dao.updateType(docId, DocumentType.EXPORTED.name)
+    }
+
+    suspend fun saveExportedDocument(
+        name: String,
+        pdfPath: String,
+        pageCount: Int,
+        parentProjectId: Long
+    ): Long = dao.insertDocument(
+        DocumentEntity(
+            name            = name,
+            type            = DocumentType.EXPORTED,
+            pdfPath         = pdfPath,
+            pageCount       = pageCount,
+            parentProjectId = parentProjectId
+        )
+    )
+
+    // Mismo nombre → sobreescribe ese documento exportado.
+    // Nombre distinto → crea una nueva entrada (nueva versión del proyecto).
+    suspend fun upsertExportedDocument(
+        name: String,
+        pdfPath: String,
+        pageCount: Int,
+        parentProjectId: Long
+    ) {
+        val existing = dao.findExportedByParentAndName(parentProjectId, name)
+        if (existing != null) {
+            dao.updateExportedDoc(existing.id, name, pdfPath, pageCount)
+        } else {
+            dao.insertDocument(
+                DocumentEntity(
+                    name            = name,
+                    type            = DocumentType.EXPORTED,
+                    pdfPath         = pdfPath,
+                    pageCount       = pageCount,
+                    parentProjectId = parentProjectId
+                )
+            )
+        }
     }
 
     // ── Ruta de carpeta de un documento ──────────────────────────────────────

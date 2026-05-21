@@ -3,6 +3,8 @@ package com.nirv.converttopdf.ui.home
 import android.content.ClipData
 import android.content.Intent
 import androidx.compose.foundation.background
+import androidx.core.content.FileProvider
+import java.io.File
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -12,14 +14,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.core.content.FileProvider
 import com.nirv.converttopdf.data.db.entity.DocumentEntity
 import com.nirv.converttopdf.data.db.entity.DocumentType
 import com.nirv.converttopdf.ui.home.components.*
 import com.nirv.converttopdf.ui.theme.ConvertPngToPdfTheme
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
-import java.io.File
 
 @Composable
 fun HomeScreen(
@@ -27,6 +27,7 @@ fun HomeScreen(
     onFiles: () -> Unit,
     onSettings: () -> Unit,
     onDraftClick: (Long) -> Unit,
+    onPdfOpen: (pdfPath: String, title: String) -> Unit = { _, _ -> },
     viewModel: HomeViewModel = koinViewModel()
 ) {
     val draftDocs by viewModel.draftDocuments.collectAsState()
@@ -37,6 +38,7 @@ fun HomeScreen(
         onFiles      = onFiles,
         onSettings   = onSettings,
         onDraftClick = onDraftClick,
+        onPdfOpen    = onPdfOpen,
     )
 }
 
@@ -48,6 +50,7 @@ fun HomeScreenContent(
     onFiles: () -> Unit,
     onSettings: () -> Unit,
     onDraftClick: (Long) -> Unit,
+    onPdfOpen: (pdfPath: String, title: String) -> Unit = { _, _ -> },
 ) {
     val context       = LocalContext.current
     val scope         = rememberCoroutineScope()
@@ -91,21 +94,7 @@ fun HomeScreenContent(
             onOpen     = {
                 scope.launch { pdfSheetState.hide() }.invokeOnCompletion {
                     selectedPdf = null
-                    pdf.pdfPath?.let { path ->
-                        val uri = FileProvider.getUriForFile(
-                            context, "${context.packageName}.provider", File(path)
-                        )
-                        val intent = Intent(Intent.ACTION_VIEW).apply {
-                            clipData = ClipData.newRawUri("PDF", uri)
-                            setDataAndType(uri, "application/pdf")
-                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                        }
-                        context.startActivity(
-                            Intent.createChooser(intent, "Abrir PDF").apply {
-                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                            }
-                        )
-                    }
+                    pdf.pdfPath?.let { path -> onPdfOpen(path, pdf.name) }
                 }
             }
         )
